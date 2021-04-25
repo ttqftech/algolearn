@@ -1,4 +1,4 @@
-import { CodeChar, CodePosition, Keywords, TokenType } from "./types";
+import { CodeChar, CodePosition, Keywords, TokenType } from "./types//types";
 
 export function isTerminator(type: TokenType | number): boolean {
     return [

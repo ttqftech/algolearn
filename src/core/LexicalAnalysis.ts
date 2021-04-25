@@ -1,5 +1,5 @@
-import { CodeChar, CodePosition, Token, TokenType } from "./types";
-import { getCharPosFromCodeChar, getKeyWordIndex, isTerminator } from "./utils";
+import { CodeChar, CodePosition, Token, TokenType } from "../types/types";
+import { getCharPosFromCodeChar, getKeyWordIndex, isTerminator } from "../utils";
 
 export interface RequiredFunction {
 	readPrevChar: (ln: number, col: number) => CodeChar;

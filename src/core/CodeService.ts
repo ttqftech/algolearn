@@ -1,4 +1,4 @@
-import { CodeChar, CodeLine, Token, TokenType } from "./types";
+import { CodeChar, CodeLine, Token, TokenType } from "../types/types";
 
 export class CodeService {
 	private codeLines: Array<CodeLine> = [];
