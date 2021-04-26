@@ -113,3 +113,18 @@ export enum TokenType {
 }
 
 export const Keywords = ['void','short','int','long','float','double','char','for','while','do','if','else','switch','case','break','continue','return'];
+
+export interface ChapterIndex {
+	chapter: number;
+	section: number;
+}
+
+export interface ListeningVariable {
+	name: String;
+	type: Array<TokenType>;	// 待定
+}
+
+export interface ChangedVariable<T> {
+	name: string;
+	value: T;
+}
