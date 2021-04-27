@@ -1,7 +1,16 @@
 import { CodeChar, CodeLine, Token, TokenType } from "../types/types";
 
 export class CodeService {
-	private codeLines: Array<CodeLine> = [];
+	private codeLines: Array<CodeLine>;
+
+	constructor() {
+		this.codeLines = [
+			{
+				code: '\n',
+				tokenMap: [],
+			}
+		]
+	}
 
 	public getCodeLines(): Array<CodeLine> {
 		return this.codeLines;
@@ -39,6 +48,7 @@ export class CodeService {
 	 * 在某个位置插入代码
 	 */
 	public insertCode(content: string, ln: number, col: number): void {
+		console.log('insertCode');
 		// 前操作
 		if (content.length === 0) {
 			return;
@@ -120,7 +130,7 @@ export class CodeService {
 		if (ln <= this.codeLines.length - 1 && ln >= 0) {
 			let codeLine = this.codeLines[ln];
 			return codeLine.tokenMap[col];
-		} else if (ln == this.codeLines.length) {
+		} else if (ln === this.codeLines.length) {
 			return {
 				type: TokenType.eof,
 				value: undefined,

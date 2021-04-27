@@ -1,13 +1,100 @@
 .course-menu {
-    height: 100%;
-    background: #EEE;
-    .welcome {
-        padding-top: 64px;
-        padding-bottom: 64px;
-        h2 {
-            font-size: 20px;
-            font-weight: unset;
-            color: #333;
-        }
-    }
+	position: relative;
+	height: 100%;
+	transition: width cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
+	overflow: hidden;
+	.welcome {
+		overflow: hidden;
+		&>div {
+			padding-top: 48px;
+			padding-bottom: 32px;
+			transition: height cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s,
+						opacity cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
+			h2 {
+				margin: unset;
+				line-height: 56px;
+				font-size: 20px;
+				font-weight: unset;
+				color: #333;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				overflow: hidden;
+			}
+			.hline {
+				width: 100%;
+				height: 1px;
+				margin-top: 32px;
+				background: linear-gradient(to right, hsla(0, 0%, 50%, 0), hsla(0, 0%, 50%, 0.5), hsla(0, 0%, 50%, 0));
+			}	
+		}
+	}
+	.menu {
+		position: absolute;
+		left: calc(20% - 64px);
+		right: calc(20% - 64px);
+		bottom: 0;
+		transition: top cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
+		.chapter {
+			width: 100%;
+			.bar {
+				position: relative;
+				width: 100%;
+				height: 56px;
+				cursor: pointer;
+				.title {
+					position: absolute;
+					left: 24px;
+					line-height: 56px;
+					font-size: 24px;
+				}
+				.blueline {
+					position: absolute;
+					bottom: 0;
+					left: 0;
+					width: 100%;
+					height: 2px;
+					background-color: royalblue;
+					transition: width cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
+				}
+				.triangle {
+					position: absolute;
+					right: 24px;
+					top: 20px;
+					width: 16px;
+					height: 16px;
+				}
+			}
+			.content {
+				width: 100%;
+				overflow: hidden;
+				transition: height ease 0.3s;
+				.section {
+					position: relative;
+					width: 100%;
+					height: 48px;
+					cursor: pointer;
+					.background {
+						height: 100%;
+						background-color: hsla(210deg, 80%, 80%, 0.3);
+						transition: width ease 0.3s;
+					}
+					.title {
+						position: absolute;
+						top: 0;
+						left: 24px;
+						line-height: 48px;
+						font-size: 16px;
+					}
+					.grayline {
+						position: absolute;
+						bottom: 0;
+						left: 0;
+						width: 100%;
+						height: 1px;
+						background-color: hsla(0, 0%, 50%, 0.15);
+					}
+				}
+			}
+		}
+	}
 }

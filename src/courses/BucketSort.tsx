@@ -1,5 +1,5 @@
 import { ChangedVariable, TokenType } from "../types/types";
-import { BaseCourse } from "./BaseCourse";
+import { BaseCourse, BaseCourseProps } from "./BaseCourse";
 
 const baseCode = `\
 void main() {
@@ -37,9 +37,9 @@ interface State {
 	i: number;
 }
 
-class BucketSort extends BaseCourse<{}, State> {
-	constructor() {
-		super({});
+class BucketSort extends BaseCourse<BaseCourseProps, State> {
+	constructor(props: (BaseCourseProps) | Readonly<BaseCourseProps>) {
+		super(props);
 		this.state = {
 			array: [],
 			bucket: [],
@@ -52,7 +52,7 @@ class BucketSort extends BaseCourse<{}, State> {
 	getBaseCode() {
 		return baseCode;
 	}
-	onVariableChange<T>(changedVariable: ChangedVariable<T>) {
+	onVariableChanged<T>(changedVariable: ChangedVariable<T>) {
 		if (['array', 'bucket', 'i'].includes(changedVariable.name)) {
 			// @ts-ignore
 			this.setState({
@@ -63,7 +63,7 @@ class BucketSort extends BaseCourse<{}, State> {
 	render () {
 		return (
 			<div>
-				<div>Hallo!</div>
+				<h2>Hallo!</h2>
 			</div>
 		)
 	}

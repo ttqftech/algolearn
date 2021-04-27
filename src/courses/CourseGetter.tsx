@@ -1,20 +1,51 @@
-import { ChapterIndex } from "../types/types";
-import BucketSort from "../courses/BucketSort";
-import React, { ClassAttributes, Component, ComponentClass, ComponentState } from "react";
+import { CourseIndex, ChapterInfo } from '../types/types';
+import BucketSort from '../courses/BucketSort';
+import React from 'react';
 
-export function getCourseElemByChapterIndex<P extends {}, T extends Component<P, ComponentState>, C extends ComponentClass<P>>(chapterIntex?: ChapterIndex, props?: ClassAttributes<T> & P | null): React.CElement<{}, React.Component<{}, any, any>> {
-    let SelectedCourse: ComponentClass<{}, any>;
-    if (!chapterIntex) {
-        SelectedCourse = 'div' as unknown as React.ComponentClass<{}, any>;
-    } else {
-        switch (chapterIntex.chapter + ',' + chapterIntex.section) {
-            case '0,0':
-                SelectedCourse = BucketSort;
-                break;    
-            default:
-                SelectedCourse = 'div' as unknown as React.ComponentClass<{}, any>;
-                break;
-        }    
-    }
-    return React.createElement(SelectedCourse, props);
+const courseMenu: Array<ChapterInfo> = [
+	{
+		title: '第一章　排序',
+		sections: [
+			{
+				title: '1.1 桶排序',
+				course: BucketSort,
+			},
+			{
+				title: '1.2 桶排序',
+				course: BucketSort,
+			},
+		]
+	},
+	{
+		title: '第二章　排序',
+		sections: [
+			{
+				title: '2.1 桶排序',
+				course: BucketSort,
+			},
+			{
+				title: '2.2 桶排序',
+				course: BucketSort,
+			},
+		]
+	},
+];
+
+export function getCourseElemByChapterIndex<P extends {}, T extends React.Component<P, React.ComponentState>>(chapterIntex?: CourseIndex, props?: React.ClassAttributes<T> & P | null): React.CElement<{}, React.Component<{}, any, any>> {
+	let SelectedCourse: React.ComponentClass<any, any>;
+	SelectedCourse = 'div' as unknown as React.ComponentClass<{}, any>;
+	if (chapterIntex) {
+		let chapter = courseMenu[chapterIntex.chapter];
+		if (chapter) {
+			let section = chapter.sections[chapterIntex.section];
+			if (section) {
+				SelectedCourse = section.course;
+			}
+		}
+	}
+	return React.createElement(SelectedCourse, props);
+}
+
+export function getCourseMenu(): Array<ChapterInfo> {
+	return courseMenu;
 }

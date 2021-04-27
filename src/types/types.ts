@@ -114,9 +114,19 @@ export enum TokenType {
 
 export const Keywords = ['void','short','int','long','float','double','char','for','while','do','if','else','switch','case','break','continue','return'];
 
-export interface ChapterIndex {
+export interface CourseIndex {
 	chapter: number;
 	section: number;
+}
+
+export interface ChapterInfo {
+	title: String;
+	sections: Array<CourseInfo>;
+};
+
+export interface CourseInfo {
+	title: String;
+	course: React.ComponentClass<any, any>; // | typeof BaseCourse
 }
 
 export interface ListeningVariable {

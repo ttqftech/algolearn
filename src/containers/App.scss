@@ -4,6 +4,7 @@
 	.header {
 		position: relative;
 		height: 40px;
+		background-color: white;
 		box-shadow: 0px 3px 3px hsla(210, 80%, 80%, 0.2);
 		z-index: 5;
 		.logo {
@@ -43,7 +44,9 @@
 	.apparea {
 		display: flex;
 		height: calc(100vh - 40px);
-		z-index: 1;
+		.playground {
+			flex: 1
+		}
 	}
 }
 

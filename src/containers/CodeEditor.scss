@@ -1,0 +1,27 @@
+.code-editor {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: #EEE;
+	box-shadow: 0 0 8px hsla(0, 0%, 20%, 0.25);
+	.controller {
+		display: flex;
+		justify-content: stretch;
+		width: 100%;
+		height: 40px;
+		button {
+			flex-grow: 1;
+			height: 28px;
+			margin: 8px 3px;
+			border: 1px solid #777;
+			border-radius: 3px;
+			background-color: white;
+			outline: none;
+			box-shadow: 0px 1px 2px hsla(0, 0%, 20%, 0.15);
+		}
+	}
+	.editor {
+		background-color: white;
+		flex-grow: 1;
+	}
+}
