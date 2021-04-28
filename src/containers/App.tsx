@@ -3,7 +3,7 @@ import logo from '../others/logo.svg';
 import { ChangedVariable, CourseIndex } from '../types/types';
 import CourseMenu from './CourseMenu';
 
-import { getCourseElemByChapterIndex } from "../courses/CourseGetter";
+import { getCourseByChapterIndex, getCourseElemByChapterIndex } from "../courses/CourseGetter";
 
 import './App.scss';
 import { BaseCourse } from '../courses/BaseCourse';
@@ -33,6 +33,7 @@ class App extends React.Component<{}, State> {
 		this.setState({
 			courseIndex
 		});
+		document.title = 'algolearn - ' + getCourseByChapterIndex(courseIndex)!.title;
 	}
 
 	/**
@@ -66,6 +67,9 @@ class App extends React.Component<{}, State> {
 				<header className="header">
 					<img src={logo} className="logo" alt="logo" />
 					<h1 className="name">algolearn</h1>
+					{this.state.courseIndex && (
+						<div className="title">{getCourseByChapterIndex(this.state.courseIndex)!.title}</div>
+					)}
 				</header>
 				<div className="apparea">
 					<CourseMenu

@@ -5,11 +5,10 @@
 	overflow: hidden;
 	.welcome {
 		overflow: hidden;
+		transition: height cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
 		&>div {
 			padding-top: 48px;
 			padding-bottom: 32px;
-			transition: height cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s,
-						opacity cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
 			h2 {
 				margin: unset;
 				line-height: 56px;
@@ -33,7 +32,7 @@
 		left: calc(20% - 64px);
 		right: calc(20% - 64px);
 		bottom: 0;
-		transition: top cubic-bezier(0.15, 0.4, 0.5, 1) 0.3s;
+		transition: top cubic-bezier(0.15, 0.4, 0.5, 1) 0.5s;
 		.chapter {
 			width: 100%;
 			.bar {
@@ -46,6 +45,7 @@
 					left: 24px;
 					line-height: 56px;
 					font-size: 24px;
+					transition: font-size linear 0.2s;
 				}
 				.blueline {
 					position: absolute;

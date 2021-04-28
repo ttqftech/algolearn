@@ -40,6 +40,14 @@
 			font-family: overpass;
 			font-weight: unset;
 		}
+		.title {
+			position: absolute;
+			top: 0;
+			left: 172px;
+			line-height: 40px;
+			font-size: 14px;
+			color: #777;
+		}
 	}
 	.apparea {
 		display: flex;
