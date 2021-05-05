@@ -1,5 +1,5 @@
 import React from 'react';
-import { getCourseMenu } from '../courses/CourseGetter';
+import { getCourseMenu } from '../courses/CourseLoader';
 import { CourseIndex } from '../types/types';
 import './CourseMenu.scss'
 

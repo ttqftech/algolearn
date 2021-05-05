@@ -1,5 +1,5 @@
 import { CourseIndex, ChapterInfo, CourseInfo } from '../types/types';
-import BucketSort from '../courses/BucketSort';
+import BucketSort from './BucketSort';
 import React from 'react';
 
 const courseMenu: Array<ChapterInfo> = [

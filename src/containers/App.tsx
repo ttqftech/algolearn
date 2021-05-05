@@ -3,7 +3,7 @@ import logo from '../others/logo.svg';
 import { ChangedVariable, CourseIndex } from '../types/types';
 import CourseMenu from './CourseMenu';
 
-import { getCourseByChapterIndex, getCourseElemByChapterIndex } from "../courses/CourseGetter";
+import { getCourseByChapterIndex, getCourseElemByChapterIndex } from "../courses/CourseLoader";
 
 import './App.scss';
 import { BaseCourse } from '../courses/BaseCourse';
