@@ -1,5 +1,6 @@
 import EventEmitter from "events";
 import { CodeChar, CodeLine, CodePosition, Token, TokenType } from "../types/types";
+import { mid } from "../utils";
 
 export enum CodeServiceEvent {
 	CodeUpdated = 'CodeUpdated',
@@ -104,12 +105,93 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
-	 * 读取指定位置的代码——
-	 * 简化版，不能处理错误位置
+	 * 删除前一位代码
+	 */
+	public deletePrevChar(ln: number, col: number): CodePosition {
+		if (col === 0) {	// 删除行
+			if (ln === 0) {
+				return { ln, col };
+			} else {
+				let upperLine = this.codeLines[ln - 1];
+				let lowerLine = this.codeLines[ln];
+				let pos: CodePosition = {
+					ln: ln - 1,
+					col: upperLine.code.length - 1,
+				}
+				this.codeLines[ln - 1] = {
+					code: upperLine.code.slice(0, -1) + lowerLine.code.slice(0, -1) + '\n',
+					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(TokenType.unknown),
+				};
+				this.codeLines.splice(ln, 1);
+				return pos;
+			}
+		} else {			// 删除非行
+			let codeLine = this.codeLines[ln];
+			codeLine.code = codeLine.code.slice(0, col - 1) + codeLine.code.slice(col);
+			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(TokenType.unknown);
+			this.codeLines[ln] = codeLine;
+			return {
+				ln,
+				col: col - 1
+			};
+		}
+	}
+
+	/**
+	 * 删除后一位代码
+	 */
+	public deleteNextChar(ln: number, col: number): CodePosition {
+		if (col === this.codeLines[ln].code.length - 1) {	// 删除行
+			if (ln === this.codeLines.length - 1) {
+				return { ln, col };
+			} else {
+				let upperLine = this.codeLines[ln];
+				let lowerLine = this.codeLines[ln + 1];
+				let pos: CodePosition = {
+					ln: ln,
+					col: upperLine.code.length - 1,
+				}
+				this.codeLines[ln] = {
+					code: upperLine.code.slice(0, -1) + lowerLine.code.slice(0, -1) + '\n',
+					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(TokenType.unknown),
+				};
+				this.codeLines.splice(ln + 1, 1);
+				return pos;
+			}
+		} else {			// 删除非行
+			let codeLine = this.codeLines[ln];
+			codeLine.code = codeLine.code.slice(0, col) + codeLine.code.slice(col + 1);
+			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(TokenType.unknown);
+			this.codeLines[ln] = codeLine;
+			return {
+				ln,
+				col: col,
+			};
+		}
+	}
+
+	/**
+	 * 删除一整行代码
+	 */
+	public deleteCodeLine(ln: number, col: number): CodeChar {
+		if (this.codeLines.length > 1)  {
+			this.codeLines.splice(ln, 1);
+		} else {
+			this.codeLines[0] = {
+				code: '\n',
+				tokenMap: [],
+			};
+		}
+		return this.readCharAt(ln, col);
+	}
+
+	/**
+	 * 读取指定位置的代码，用于自动扫描
+	 * 如果超出位置则取出 bof 或 eof
 	 */
 	public readCharAt_s(ln: number, col: number): CodeChar {
 		return {
-			char: ln <= this.codeLines.length - 1 && ln >= 0 ? this.codeLines[ln].code[col] : '',
+			char: this.codeLines[ln].code[col],
 			ln,
 			col,
 			token: this.getCodeToken(ln, col),
@@ -117,15 +199,16 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
-	 * 读取指定位置的代码，可以处理向右向下超出的位置
+	 * 读取指定位置的代码，用于处理用户光标操作
+	 * 如果超出位置则自动取最接近的位置
 	 */
 	public readCharAt(ln: number, col: number): CodeChar {
 		let line, column;
-		console.log('readCharAt');
-		line = Math.min(ln, this.codeLines.length - 1);
-		column = Math.min(col, this.codeLines[line].code.length - 1);
+		// console.log('readCharAt');
+		line = mid(0, ln, this.codeLines.length - 1);
+		column = mid(0, col, this.codeLines[line].code.length - 1);
 		return {
-			char: line <= this.codeLines.length - 1 && line >= 0 ? this.codeLines[line].code[column] : '',
+			char: this.codeLines[line].code[column],
 			ln: line,
 			col: column,
 			token: this.getCodeToken(line, column),
@@ -134,10 +217,11 @@ export class CodeService extends EventEmitter {
 
 	/**
 	 * 读取指定位置的下一个代码
+	 * 如果超出位置则取出 eof
 	 */
 	public readNextChar(ln: number, col: number): CodeChar {
 		let line, column;
-		console.log('readNextChar');
+		// console.log('readNextChar');
 		// 移动字符
 		if (col >= this.codeLines[ln].code.length - 1) {
 			line = ln + 1;
@@ -152,11 +236,12 @@ export class CodeService extends EventEmitter {
 
 	/**
 	 * 读取指定位置的上一个代码
+	 * 如果超出位置则取出 bof
 	 */
 	public readPrevChar(ln: number, col: number): CodeChar {
 		let line, column;
 		// 移动字符
-		console.log('readPrevChar');
+		// console.log('readPrevChar');
 		if (col === 0) {
 			line = ln - 1;
 			if (line < 0) {
@@ -173,13 +258,14 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
-	 * 获取指定位置代码的类型，自动识别文件末尾
+	 * 获取指定位置代码的类型
+	 * 如果超出位置则取出 bof 或 eof
 	 */
 	public getCodeToken(ln: number, col: number): Token {
-		if (ln <= this.codeLines.length - 1 && ln >= 0) {
+		if (ln >= 0 && ln <= this.codeLines.length - 1) {
 			let codeLine = this.codeLines[ln];
 			return codeLine.tokenMap[col] || TokenType.endline;
-		} else if (ln === this.codeLines.length) {
+		} else if (ln >= this.codeLines.length) {
 			return {
 				type: TokenType.eof,
 				value: undefined,

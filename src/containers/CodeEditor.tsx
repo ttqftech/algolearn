@@ -17,6 +17,7 @@ interface State {
 class CodeEditor extends React.Component<Props, State> {
 	private codeService: CodeService;
 	private pointerElemRef: HTMLDivElement | null;
+	private dragging: boolean = false;
 
 	constructor(props: Props | Readonly<Props>) {
 		super(props);
@@ -93,32 +94,97 @@ class CodeEditor extends React.Component<Props, State> {
 					});	
 				}
 				break;		
-			case 'ArrowUp':	
-			case 'ArrowDown':	
-			case 'Backspace':	
-			case 'Delete':	
+			case 'ArrowUp':
+				newChar = this.codeService.readCharAt(ln - 1, col);
+				this.setState({
+					pointerPos: {
+						ln: newChar.ln,
+						col: newChar.col,
+					}
+				});	
+				break;		
+			case 'ArrowDown':
+				newChar = this.codeService.readCharAt(ln + 1, col);
+				this.setState({
+					pointerPos: {
+						ln: newChar.ln,
+						col: newChar.col,
+					}
+				});	
+				break;		
+			case 'Backspace':
+				if (event.altKey) {
+					newChar = this.codeService.deleteCodeLine(ln, col);
+				} else {
+					newChar = this.codeService.deletePrevChar(ln, col) as CodeChar;
+				}
+				this.setState({
+					pointerPos: {
+						ln: newChar.ln,
+						col: newChar.col,
+					}
+				});	
+				break;
+			case 'Delete':
+				if (event.altKey) {
+					newChar = this.codeService.deleteCodeLine(ln, col);
+				} else {
+					newChar = this.codeService.deleteNextChar(ln, col) as CodeChar;
+				}
+				this.setState({
+					pointerPos: {
+						ln: newChar.ln,
+						col: newChar.col,
+					}
+				});	
+				break;
 		// 	default:
 		// 		break;
 		}
-		this.pointerElemRef?.style.setProperty('animation-name', '')
-		window.requestAnimationFrame(() => {
-			this.pointerElemRef?.style.setProperty('animation-name', 'flash');
-		})
+		this.restartPointerAnimation();
 	}
 
 	/**
-	 * 响应编辑器 mask 的点击操作
+	 * 响应编辑器 mask 的移动操作
 	 */
-	onClick(event: any) {
+	onMouseMove(event: any): void {
+		if (!this.dragging) {
+			return;
+		}
 		let x = event.nativeEvent.offsetX;
-		let y = event.nativeEvent.offsetY;
+		let y = event.nativeEvent.offsetY - 6;
 		let newChar = this.codeService.readCharAt(Math.round(y / 20), Math.round(x / 9));
 		this.setState({
 			pointerPos: {
 				ln: newChar.ln,
 				col: newChar.col,
 			}
-		});	}
+		});
+		this.restartPointerAnimation();
+	}
+
+	/**
+	 * 响应编辑器 mask 的 DragStart 操作
+	 */
+	onDragStart(event: any) {
+		this.dragging = true;
+		this.onMouseMove(event);
+	}
+
+	/**
+	 * 响应编辑器 mask 的 DragEnd 操作
+	 */
+	onDragEnd(event: any) {
+		this.dragging = false;
+	}
+
+	// 使光标重新闪烁
+	restartPointerAnimation(): void {
+		this.pointerElemRef?.style.setProperty('animation-name', '')
+		window.requestAnimationFrame(() => {
+			this.pointerElemRef?.style.setProperty('animation-name', 'flash');
+		});
+	}
 
 	render() {
 		return (
@@ -138,7 +204,7 @@ class CodeEditor extends React.Component<Props, State> {
 						})}
 					</div>
 					<div className="codearea">
-						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onClick={this.onClick.bind(this)} />
+						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMouseMove.bind(this)} onMouseDown={this.onDragStart.bind(this)} onMouseUp={this.onDragEnd.bind(this)} />
 						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * 9 + 3}px`, top: `${this.state.pointerPos.ln * 20}px` }} ref={div => this.pointerElemRef = div} />
 						{this.codeService.getCodeLines().map((codeLine, ln) => {
 							return (

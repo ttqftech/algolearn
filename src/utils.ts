@@ -1,4 +1,4 @@
-import { CodeChar, CodePosition, Keywords, TokenType } from "./types//types";
+import { CodeChar, CodePosition, Keywords, TokenType } from "./types/types";
 
 export function isTerminator(type: TokenType | number): boolean {
     return [
@@ -82,4 +82,8 @@ export function getCharPosFromCodeChar(c: CodeChar): CodePosition {
         ln: c.ln,
         col: c.col,
     };
+}
+
+export function mid(a: number, b: number, c: number) {
+    return [a, b, c].sort((a, b) => a > b ? 1 : -1)[1];
 }
