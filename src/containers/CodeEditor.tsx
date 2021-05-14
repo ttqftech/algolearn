@@ -212,8 +212,14 @@ class CodeEditor extends React.Component<Props, State> {
 									<div className="content">
 										{/* {codeLine.code} */}
 										{codeLine.code.split('').map((char, col) => {
+											let color: string;
+											if (codeLine.tokenMap[col]) {
+												color = this.codeService.getTokenColor(codeLine.tokenMap[col].type);
+											} else {
+												color = ''
+											}
 											return (
-												<div className="char" key={col}>{char}</div>
+												<div className="char" key={col} style={{ color: color }}>{char}</div>
 											)
 										})}
 									</div>

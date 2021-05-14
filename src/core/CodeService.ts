@@ -1,13 +1,21 @@
 import EventEmitter from "events";
 import { CodeChar, CodeLine, CodePosition, Token, TokenType } from "../types/types";
 import { mid } from "../utils";
+import { LexicalAnalysis } from "./LexicalAnalysis";
 
 export enum CodeServiceEvent {
 	CodeUpdated = 'CodeUpdated',
 }
 
+const nullToken: Token = {
+	type: TokenType.unknown,
+	value: undefined,
+}
+
 export class CodeService extends EventEmitter {
 	private codeLines: Array<CodeLine>;
+	private lexicalAnalyzer: LexicalAnalysis;
+	private antishakeTimer: any = 0;
 
 	constructor() {
 		super();
@@ -17,6 +25,14 @@ export class CodeService extends EventEmitter {
 				tokenMap: [],
 			}
 		];
+		this.lexicalAnalyzer = new LexicalAnalysis({
+			readPrevChar: this.readPrevChar.bind(this),
+			readCharAt: this.readCharAt.bind(this),
+			readNextChar: this.readNextChar.bind(this),
+		});
+		this.on(CodeServiceEvent.CodeUpdated, () => {
+			this.ScanCode();
+		});
 	}
 
 	public getCodeLines(): Array<CodeLine> {
@@ -49,6 +65,7 @@ export class CodeService extends EventEmitter {
 			code,
 			tokenMap: [],
 		}
+		this.emit(CodeServiceEvent.CodeUpdated);
 	}
 
 	/**
@@ -67,19 +84,19 @@ export class CodeService extends EventEmitter {
 			code: codeLine.code.slice(0, col) + content + codeLine.code.slice(col, -1) + '\n',
 			tokenMap: [],
 		}];
-		newCodeLines[0].tokenMap = new Array(newCodeLines[0].code.length).fill(TokenType.unknown);
+		newCodeLines[0].tokenMap = new Array(newCodeLines[0].code.length).fill(nullToken);
 		// 一直往后搜索 \n，搜到后在此处裁剪内容，新增一行
 		let endLinePos = newCodeLines[0].code.indexOf('\n');
 		for (let i = 0; endLinePos >= 0 && endLinePos < newCodeLines[i].code.length - 1; i++) {
 			// 将此行换行符后面的东西裁走加入到新行
 			newCodeLines.push({
 				code: newCodeLines[i].code.slice(endLinePos + 1, -1) + '\n',
-				tokenMap: new Array(newCodeLines[i].code.length - 1 - endLinePos).fill(TokenType.unknown),
+				tokenMap: new Array(newCodeLines[i].code.length - 1 - endLinePos).fill(nullToken),
 			})
 			// 将前面的内容裁走
 			newCodeLines[i] = {
 				code: newCodeLines[i].code.slice(0, endLinePos) + '\n',
-				tokenMap: new Array(endLinePos).fill(TokenType.unknown),
+				tokenMap: new Array(endLinePos).fill(nullToken),
 			}
 			endLinePos = newCodeLines[i + 1].code.indexOf('\n');
 		}
@@ -120,16 +137,18 @@ export class CodeService extends EventEmitter {
 				}
 				this.codeLines[ln - 1] = {
 					code: upperLine.code.slice(0, -1) + lowerLine.code.slice(0, -1) + '\n',
-					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(TokenType.unknown),
+					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(nullToken),
 				};
 				this.codeLines.splice(ln, 1);
+				this.emit(CodeServiceEvent.CodeUpdated);
 				return pos;
 			}
 		} else {			// 删除非行
 			let codeLine = this.codeLines[ln];
 			codeLine.code = codeLine.code.slice(0, col - 1) + codeLine.code.slice(col);
-			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(TokenType.unknown);
+			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(nullToken);
 			this.codeLines[ln] = codeLine;
+			this.emit(CodeServiceEvent.CodeUpdated);
 			return {
 				ln,
 				col: col - 1
@@ -153,16 +172,18 @@ export class CodeService extends EventEmitter {
 				}
 				this.codeLines[ln] = {
 					code: upperLine.code.slice(0, -1) + lowerLine.code.slice(0, -1) + '\n',
-					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(TokenType.unknown),
+					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(nullToken),
 				};
 				this.codeLines.splice(ln + 1, 1);
+				this.emit(CodeServiceEvent.CodeUpdated);
 				return pos;
 			}
 		} else {			// 删除非行
 			let codeLine = this.codeLines[ln];
 			codeLine.code = codeLine.code.slice(0, col) + codeLine.code.slice(col + 1);
-			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(TokenType.unknown);
+			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(nullToken);
 			this.codeLines[ln] = codeLine;
+			this.emit(CodeServiceEvent.CodeUpdated);
 			return {
 				ln,
 				col: col,
@@ -182,6 +203,7 @@ export class CodeService extends EventEmitter {
 				tokenMap: [],
 			};
 		}
+		this.emit(CodeServiceEvent.CodeUpdated);
 		return this.readCharAt(ln, col);
 	}
 
@@ -191,7 +213,7 @@ export class CodeService extends EventEmitter {
 	 */
 	public readCharAt_s(ln: number, col: number): CodeChar {
 		return {
-			char: this.codeLines[ln].code[col],
+			char: ln >= 0 && ln <= this.codeLines.length - 1 ? this.codeLines[ln].code[col] : '',
 			ln,
 			col,
 			token: this.getCodeToken(ln, col),
@@ -264,7 +286,17 @@ export class CodeService extends EventEmitter {
 	public getCodeToken(ln: number, col: number): Token {
 		if (ln >= 0 && ln <= this.codeLines.length - 1) {
 			let codeLine = this.codeLines[ln];
-			return codeLine.tokenMap[col] || TokenType.endline;
+			if (col === codeLine.code.length - 1) {
+				return codeLine.tokenMap[col] || {
+					type: TokenType.endline,
+					value: undefined,
+				};
+			} else {
+				return codeLine.tokenMap[col] || {
+					type: TokenType.unknown,
+					value: undefined,
+				};
+			}
 		} else if (ln >= this.codeLines.length) {
 			return {
 				type: TokenType.eof,
@@ -278,7 +310,131 @@ export class CodeService extends EventEmitter {
 		}
 	}
 
-	public getHightlightType() {
-		
+	/**
+	 * 编译
+	 */
+	public ScanCode(): void {
+		clearInterval(this.antishakeTimer);
+		this.antishakeTimer = setTimeout(() => {
+			console.log('scanCode');
+			this.lexicalAnalyzer.analyze({
+				ln: 0,
+				col: 0,
+			}, {
+				ln: this.codeLines.length - 1,
+				col: this.codeLines[this.codeLines.length - 1].code.length - 1,
+			});
+		}, 300);
+	}
+
+	public getTokenColor(tokenType: TokenType): string {
+		switch (tokenType) {
+			case TokenType.error:
+				return '#FF0000'
+			case TokenType.unknown:
+				return '#000000';
+			case TokenType.preprocess:
+				return '#FF0000';		// 暂不支持
+			case TokenType.comma:
+			case TokenType.semicon:
+				return '#666666';
+			case TokenType.brakets_round_left:
+			case TokenType.brakets_round_right:
+			case TokenType.brakets_square_left:
+			case TokenType.brakets_square_right:
+			case TokenType.brakets_curly_left:
+			case TokenType.brakets_curly_right:
+				return '#222A44';
+			case TokenType.compare_equal:
+			case TokenType.compare_unequal:
+			case TokenType.compare_less:
+			case TokenType.compare_less_equal:
+			case TokenType.compare_great:
+			case TokenType.compare_great_equal:
+				return '#882222';
+			case TokenType.compare_colon:
+			case TokenType.compare_question:
+				return '#FF0000';		// 暂不支持
+			case TokenType.bit_logic_and:
+			case TokenType.bit_logic_or:
+			case TokenType.bit_and:
+			case TokenType.bit_and_assign:
+			case TokenType.bit_or:
+			case TokenType.bit_or_assign:
+			case TokenType.bit_negation:
+			case TokenType.bit_negation_assign:
+			case TokenType.bit_xor:
+			case TokenType.bit_xor_assign:
+			case TokenType.bit_move_left:
+			case TokenType.bit_move_left_assign:
+			case TokenType.bit_move_right:
+			case TokenType.bit_move_right_assign:
+				return '#FF0000';		// 暂不支持
+			case TokenType.calc_assign:
+				return '#BBAA33';
+			case TokenType.calc_negation:
+			case TokenType.calc_mod:
+			case TokenType.calc_mod_assign:
+				return '#FF0000';		// 暂不支持
+			case TokenType.calc_multiply:
+				return '#AABB33'			
+			case TokenType.calc_multiply_assign:
+				return '#FF0000';		// 暂不支持
+			case TokenType.calc_devide:
+				return '#AABB33'
+			case TokenType.calc_devide_assign:
+				return '#FF0000';		// 暂不支持
+			case TokenType.calc_add:
+				return '#AABB33'
+			case TokenType.calc_add_assign:
+			case TokenType.calc_add_self:
+				return '#FF0000';		// 暂不支持
+			case TokenType.calc_minus:
+				return '#AABB33'
+			case TokenType.calc_minus_assign:
+			case TokenType.calc_minus_self:
+				return '#FF0000';		// 暂不支持
+			case TokenType.struct_point:
+			case TokenType.struct_arrow:
+				return '#FF0000';		// 暂不支持
+			case TokenType.number_bin_int:
+			case TokenType.number_bin_float:
+			case TokenType.number_bin_float_e:
+			case TokenType.number_oct_int:
+			case TokenType.number_oct_float:
+			case TokenType.number_oct_float_e:
+			case TokenType.number_dec_int:
+			case TokenType.number_dec_float:
+			case TokenType.number_dec_float_e:
+			case TokenType.number_hex_int:
+			case TokenType.number_hex_float:
+			case TokenType.number_hex_float_e:
+				return '#3377CC';
+			case TokenType.char_char:
+			case TokenType.char_string:
+				return '#FF0000';		// 暂不支持
+			case TokenType.bool_true:
+			case TokenType.bool_false:
+				return '#3377CC';
+			case TokenType.note_singleline:
+			case TokenType.note_multiline:
+				return '#AA2222';
+			case TokenType.identifier:
+				return 'AA00AA';
+			case TokenType.keyword:
+			case TokenType.keyword_void:
+			case TokenType.keyword_short:
+			case TokenType.keyword_int:
+			case TokenType.keyword_long:
+			case TokenType.keyword_float:
+			case TokenType.keyword_double:
+			case TokenType.keyword_while:
+			case TokenType.keyword_if:
+			case TokenType.keyword_else:
+			case TokenType.keyword_return:
+				return '0000BB';
+			default:
+				return '#FF0000';
+		}
 	}
 }
