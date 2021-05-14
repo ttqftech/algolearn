@@ -1,10 +1,10 @@
-import { CodeChar, CodePosition, Token, TokenType } from "../types/types";
+import { CodeChar, CodeCharWrapper, CodePosition, Token, TokenType } from "../types/types";
 import { getKeyWordIndex, isTerminator } from "../utils";
 
 export interface RequiredFunction {
-	readPrevChar: (ln: number, col: number) => CodeChar;
-	readCharAt: (ln: number, col: number) => CodeChar;
-	readNextChar: (ln: number, col: number) => CodeChar;
+	readPrevChar: (ln: number, col: number) => CodeCharWrapper;
+	readCharAt: (ln: number, col: number) => CodeCharWrapper;
+	readNextChar: (ln: number, col: number) => CodeCharWrapper;
 }
 
 /**
@@ -691,13 +691,13 @@ export class LexicalAnalysis {
 		// 清空 tokenList 原位置的 token，寻找合适的插入位置
 		let tokenIndexBefore: number = -1;
 		let charBefore = this.readPrevChar(from.ln, from.col);
-		if (charBefore.token.type !== TokenType.bof) {
-			tokenIndexBefore = this.tokenList.findIndex((token) => token === charBefore.token);
+		if (charBefore.code.token.type !== TokenType.bof) {
+			tokenIndexBefore = this.tokenList.findIndex((token) => token === charBefore.code.token);
 		}
 		let tokenIndexAfter: number = Number.MAX_SAFE_INTEGER;
 		let charAfter = this.readNextChar(to.ln, to.col);
-		if (charAfter.token.type !== TokenType.eof) {
-			tokenIndexAfter = this.tokenList.findIndex((token) => token === charAfter.token);
+		if (charAfter.code.token.type !== TokenType.eof) {
+			tokenIndexAfter = this.tokenList.findIndex((token) => token === charAfter.code.token);
 		}
 		this.tokenList.splice(tokenIndexBefore + 1, tokenIndexAfter - tokenIndexBefore - 2);
 		// 进行词法分析
@@ -707,8 +707,8 @@ export class LexicalAnalysis {
 		let tokenIndex = tokenIndexBefore + 1;
 		outer:
 		while (true) {
-			let newState = move(state, c);
-			console.log('move', state, newState, c);
+			let newState = move(state, c.code);
+			// console.log('move', state, newState, c);
 			if (newState === TokenType.error) {
 				// 状态机走到错误，将前面的内容识别为一个单词
 				// 然后检查上一个字符是不是终结符。依此将整个单词的 TokenType 设为对应类型
@@ -720,12 +720,12 @@ export class LexicalAnalysis {
 				let subC = this.readCharAt(lastStart.ln, lastStart.col);
 				while (subC.ln !== lastEnd.ln || subC.col !== lastEnd.col) {
 					// 从 lastStart 开始到 lastChar，加入 valueString，并设置 token 引用
-					valueString += subC.char;
-					subC.token = newToken;
+					valueString += subC.code.char;
+					subC.code.token = newToken;
 					subC = this.readNextChar(subC.ln, subC.col);
 				}
-				subC.token = newToken;			// 改动 word 里最后一个字符的 token 引用
-				valueString += subC.char;
+				subC.code.token = newToken;			// 改动 word 里最后一个字符的 token 引用
+				valueString += subC.code.char;
 				newToken.value = getValueFromCodeString(valueString, state);
 				newToken.type = isTerminator(state) ? state : TokenType.error;
 				// 识别 identifier 是不是一个 keyword
@@ -741,15 +741,15 @@ export class LexicalAnalysis {
 				}
 				// ⬆️ 上一个 token 的相关操作　⬇️ 当前字符的再操作
 				state = TokenType.unknown;		// 状态机重置
-				state = move(state, c);	// 将当前字符再走一遍状态机
+				state = move(state, c.code);	// 将当前字符再走一遍状态机
 				while (state === TokenType.unknown) {
 					// 反复读取直到下一个不是空格
 					c = this.readNextChar(c.ln, c.col);
-					if (c.token.type === TokenType.eof) {
+					if (c.code.token.type === TokenType.eof) {
 						break outer;
 					}		
-					state = move(state, c);
-					console.log('move', TokenType.unknown, newState, c);
+					state = move(state, c.code);
+					// console.log('move', TokenType.unknown, newState, c);
 					lastStart = c;			// 重新设定 token 的开始
 				}
 			} else {
@@ -762,7 +762,7 @@ export class LexicalAnalysis {
 			}
 			c = this.readNextChar(c.ln, c.col);
 			// 前面的代码往后读取后，读到了 eof，则退出循环
-			if (c.token.type === TokenType.eof) {
+			if (c.code.token.type === TokenType.eof) {
 				break;
 			}
 		}

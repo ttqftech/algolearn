@@ -1,6 +1,6 @@
 import React from "react";
 import { CodeService, CodeServiceEvent } from "../core/CodeService";
-import { ChangedVariable, CodeChar, CodePosition, TokenType } from "../types/types";
+import { ChangedVariable, CodeCharWrapper, CodePosition, TokenType } from "../types/types";
 import './CodeEditor.scss'
 
 interface Props {
@@ -41,6 +41,9 @@ class CodeEditor extends React.Component<Props, State> {
 			// console.log('CodeUpdated');
 			this.setState({});
 		})
+		this.codeService.on(CodeServiceEvent.LexicalReady, () => {
+			this.setState({});
+		})
 	}
 
 	/**
@@ -70,11 +73,11 @@ class CodeEditor extends React.Component<Props, State> {
 	onKeyDown(event: any) {
 		// console.log(event);
 		let { ln, col } = this.state.pointerPos;
-		let newChar: CodeChar;	// 临时值
+		let newChar: CodeCharWrapper;	// 临时值
 		switch (event.key) {
 			case 'ArrowLeft':
 				newChar = this.codeService.readPrevChar(ln, col);
-				if (newChar.token.type !== TokenType.bof) {
+				if (newChar.code.token.type !== TokenType.bof) {
 					this.setState({
 						pointerPos: {
 							ln: newChar.ln,
@@ -85,7 +88,7 @@ class CodeEditor extends React.Component<Props, State> {
 				break;
 			case 'ArrowRight':
 				newChar = this.codeService.readNextChar(ln, col);
-				if (newChar.token.type !== TokenType.eof) {
+				if (newChar.code.token.type !== TokenType.eof) {
 					this.setState({
 						pointerPos: {
 							ln: newChar.ln,
@@ -116,7 +119,7 @@ class CodeEditor extends React.Component<Props, State> {
 				if (event.altKey) {
 					newChar = this.codeService.deleteCodeLine(ln, col);
 				} else {
-					newChar = this.codeService.deletePrevChar(ln, col) as CodeChar;
+					newChar = this.codeService.deletePrevChar(ln, col) as CodeCharWrapper;
 				}
 				this.setState({
 					pointerPos: {
@@ -129,7 +132,7 @@ class CodeEditor extends React.Component<Props, State> {
 				if (event.altKey) {
 					newChar = this.codeService.deleteCodeLine(ln, col);
 				} else {
-					newChar = this.codeService.deleteNextChar(ln, col) as CodeChar;
+					newChar = this.codeService.deleteNextChar(ln, col) as CodeCharWrapper;
 				}
 				this.setState({
 					pointerPos: {
@@ -211,15 +214,11 @@ class CodeEditor extends React.Component<Props, State> {
 								<div className="codeline" key={ln}>
 									<div className="content">
 										{/* {codeLine.code} */}
-										{codeLine.code.split('').map((char, col) => {
+										{codeLine.map((code, col) => {
 											let color: string;
-											if (codeLine.tokenMap[col]) {
-												color = this.codeService.getTokenColor(codeLine.tokenMap[col].type);
-											} else {
-												color = ''
-											}
+											color = this.codeService.getTokenColor(code.token.type);
 											return (
-												<div className="char" key={col} style={{ color: color }}>{char}</div>
+												<div className="char" key={col} style={{ color: color }}>{code.char}</div>
 											)
 										})}
 									</div>

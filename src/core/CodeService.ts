@@ -1,15 +1,41 @@
 import EventEmitter from "events";
-import { CodeChar, CodeLine, CodePosition, Token, TokenType } from "../types/types";
+import { CodeChar, CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
 import { mid } from "../utils";
 import { LexicalAnalysis } from "./LexicalAnalysis";
+// import { LexicalAnalysis } from "./LexicalAnalysis";
 
 export enum CodeServiceEvent {
 	CodeUpdated = 'CodeUpdated',
+	LexicalReady = 'LexicalReady',
 }
 
 const nullToken: Token = {
 	type: TokenType.unknown,
 	value: undefined,
+}
+
+const bofChar: CodeChar = {
+	char: '',
+	token: {
+		type: TokenType.bof,
+		value: undefined,
+	}
+}
+
+const eofChar: CodeChar = {
+	char: '',
+	token: {
+		type: TokenType.eof,
+		value: undefined,
+	}
+}
+
+const endlineChar = {
+	char: '\n',
+	token: {
+		type: TokenType.endline,
+		value: undefined,
+	}
 }
 
 export class CodeService extends EventEmitter {
@@ -20,10 +46,7 @@ export class CodeService extends EventEmitter {
 	constructor() {
 		super();
 		this.codeLines = [
-			{
-				code: '\n',
-				tokenMap: [],
-			}
+			[endlineChar]
 		];
 		this.lexicalAnalyzer = new LexicalAnalysis({
 			readPrevChar: this.readPrevChar.bind(this),
@@ -40,32 +63,48 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
+	 * 获取单个代码行的内容
+	 */
+	 public getCodeLine(ln: number): CodeLine {
+		return this.codeLines[ln];
+	}
+
+	/**
 	 * 获取全部代码，即把所有行都拼接起来输出
 	 */
 	public getAllCode(): string {
 		let ret = '';
 		for (const codeLine of this.codeLines) {
-			ret += codeLine.code;
+			for (const codeChar of codeLine) {
+				ret += codeChar.char;
+			}
 		}
 		return ret;
 	}
 
 	/**
-	 * 获取单个代码行的内容
+	 * 将新插入的字符串转换成 Array<CodeChar>
 	 */
-	public getCodeLine(ln: number): CodeLine {
-		return this.codeLines[ln];
+	public stringToCodeChar(str: string): Array<CodeChar> {
+		let ret: Array<CodeChar> = [];
+		for (const char of str.split('')) {
+			ret.push({
+				char,
+				token: nullToken,
+			});
+		}
+		return ret;
 	}
 
 	/**
-	 * 替换单个代码行的内容
+	 * 将存储的 CodeChar 转换成 string
 	 */
-	public setCodeLineByString(ln: number, code: string): void {
-		this.codeLines[ln] = {
-			code,
-			tokenMap: [],
+	public codeCharToString(arr: Array<CodeChar>): string {
+		let ret: string = '';
+		for (const codeChar of arr) {
+			ret += codeChar.char;
 		}
-		this.emit(CodeServiceEvent.CodeUpdated);
+		return ret;
 	}
 
 	/**
@@ -78,35 +117,12 @@ export class CodeService extends EventEmitter {
 		}
 		content = content.replace(/\r\n/g, '\n');
 		content = content.replace(/\r/g, '\n');
-		// 直接替换本行内容
-		let codeLine = this.codeLines[ln];
-		let newCodeLines: Array<CodeLine> = [{
-			code: codeLine.code.slice(0, col) + content + codeLine.code.slice(col, -1) + '\n',
-			tokenMap: [],
-		}];
-		newCodeLines[0].tokenMap = new Array(newCodeLines[0].code.length).fill(nullToken);
-		// 一直往后搜索 \n，搜到后在此处裁剪内容，新增一行
-		let endLinePos = newCodeLines[0].code.indexOf('\n');
-		for (let i = 0; endLinePos >= 0 && endLinePos < newCodeLines[i].code.length - 1; i++) {
-			// 将此行换行符后面的东西裁走加入到新行
-			newCodeLines.push({
-				code: newCodeLines[i].code.slice(endLinePos + 1, -1) + '\n',
-				tokenMap: new Array(newCodeLines[i].code.length - 1 - endLinePos).fill(nullToken),
-			})
-			// 将前面的内容裁走
-			newCodeLines[i] = {
-				code: newCodeLines[i].code.slice(0, endLinePos) + '\n',
-				tokenMap: new Array(endLinePos).fill(nullToken),
-			}
-			endLinePos = newCodeLines[i + 1].code.indexOf('\n');
-		}
-		// 替换第一行的内容
-		this.codeLines[ln] = newCodeLines[0];
-		// 从插入内容的第二行开始遍历，进行插入
-		for (let i = 1; i < newCodeLines.length; i++) {
-			this.codeLines.splice(ln + i, 0, newCodeLines[i]);
-		}
-
+		// 
+		let originCodeLine = this.codeLines[ln];
+		let newCodeLines: Array<CodeLine> = content.split('\n').map((str) => this.stringToCodeChar(str + '\n'));
+		newCodeLines[0].unshift(...originCodeLine.slice(0, col));
+		newCodeLines[newCodeLines.length - 1].splice(-1, 0 ,...originCodeLine.slice(col));
+		this.codeLines.splice(ln, 1, ...newCodeLines);
 		this.emit(CodeServiceEvent.CodeUpdated);
 		if (newCodeLines.length === 1) {
 			return {
@@ -133,21 +149,16 @@ export class CodeService extends EventEmitter {
 				let lowerLine = this.codeLines[ln];
 				let pos: CodePosition = {
 					ln: ln - 1,
-					col: upperLine.code.length - 1,
+					col: upperLine.length - 1,
 				}
-				this.codeLines[ln - 1] = {
-					code: upperLine.code.slice(0, -1) + lowerLine.code.slice(0, -1) + '\n',
-					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(nullToken),
-				};
+				this.codeLines[ln - 1] = [...upperLine.slice(0, -1), ...lowerLine.slice(0, -1), Object.assign({}, endlineChar)];
 				this.codeLines.splice(ln, 1);
 				this.emit(CodeServiceEvent.CodeUpdated);
 				return pos;
 			}
 		} else {			// 删除非行
 			let codeLine = this.codeLines[ln];
-			codeLine.code = codeLine.code.slice(0, col - 1) + codeLine.code.slice(col);
-			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(nullToken);
-			this.codeLines[ln] = codeLine;
+			this.codeLines[ln] = [...codeLine.slice(0, col - 1), ...codeLine.slice(col)];
 			this.emit(CodeServiceEvent.CodeUpdated);
 			return {
 				ln,
@@ -160,7 +171,7 @@ export class CodeService extends EventEmitter {
 	 * 删除后一位代码
 	 */
 	public deleteNextChar(ln: number, col: number): CodePosition {
-		if (col === this.codeLines[ln].code.length - 1) {	// 删除行
+		if (col === this.codeLines[ln].length - 1) {	// 删除行
 			if (ln === this.codeLines.length - 1) {
 				return { ln, col };
 			} else {
@@ -168,21 +179,16 @@ export class CodeService extends EventEmitter {
 				let lowerLine = this.codeLines[ln + 1];
 				let pos: CodePosition = {
 					ln: ln,
-					col: upperLine.code.length - 1,
+					col: upperLine.length - 1,
 				}
-				this.codeLines[ln] = {
-					code: upperLine.code.slice(0, -1) + lowerLine.code.slice(0, -1) + '\n',
-					tokenMap: new Array(upperLine.code.length + lowerLine.code.length - 2).fill(nullToken),
-				};
+				this.codeLines[ln] = [...upperLine.slice(0, -1), ...lowerLine.slice(0, -1), Object.assign({}, endlineChar)];
 				this.codeLines.splice(ln + 1, 1);
 				this.emit(CodeServiceEvent.CodeUpdated);
 				return pos;
 			}
 		} else {			// 删除非行
 			let codeLine = this.codeLines[ln];
-			codeLine.code = codeLine.code.slice(0, col) + codeLine.code.slice(col + 1);
-			codeLine.tokenMap = new Array(codeLine.code.length - 1).fill(nullToken);
-			this.codeLines[ln] = codeLine;
+			this.codeLines[ln] = [...codeLine.slice(0, col), ...codeLine.slice(col + 1)];
 			this.emit(CodeServiceEvent.CodeUpdated);
 			return {
 				ln,
@@ -194,14 +200,11 @@ export class CodeService extends EventEmitter {
 	/**
 	 * 删除一整行代码
 	 */
-	public deleteCodeLine(ln: number, col: number): CodeChar {
+	public deleteCodeLine(ln: number, col: number): CodeCharWrapper {
 		if (this.codeLines.length > 1)  {
 			this.codeLines.splice(ln, 1);
 		} else {
-			this.codeLines[0] = {
-				code: '\n',
-				tokenMap: [],
-			};
+			this.codeLines[0] = [endlineChar];
 		}
 		this.emit(CodeServiceEvent.CodeUpdated);
 		return this.readCharAt(ln, col);
@@ -211,12 +214,12 @@ export class CodeService extends EventEmitter {
 	 * 读取指定位置的代码，用于自动扫描
 	 * 如果超出位置则取出 bof 或 eof
 	 */
-	public readCharAt_s(ln: number, col: number): CodeChar {
+	public readCharAt_s(ln: number, col: number): CodeCharWrapper {
+		// console.log('readCharAt_s', ln, col);
 		return {
-			char: ln >= 0 && ln <= this.codeLines.length - 1 ? this.codeLines[ln].code[col] : '',
+			code: ln < 0 ? bofChar : ln > this.codeLines.length - 1 ? eofChar : this.codeLines[ln][col],
 			ln,
 			col,
-			token: this.getCodeToken(ln, col),
 		}
 	}
 
@@ -224,16 +227,15 @@ export class CodeService extends EventEmitter {
 	 * 读取指定位置的代码，用于处理用户光标操作
 	 * 如果超出位置则自动取最接近的位置
 	 */
-	public readCharAt(ln: number, col: number): CodeChar {
+	public readCharAt(ln: number, col: number): CodeCharWrapper {
 		let line, column;
-		// console.log('readCharAt');
+		// console.log('readCharAt', ln, col);
 		line = mid(0, ln, this.codeLines.length - 1);
-		column = mid(0, col, this.codeLines[line].code.length - 1);
+		column = mid(0, col, this.codeLines[line].length - 1);
 		return {
-			char: this.codeLines[line].code[column],
+			code: this.codeLines[line][column],
 			ln: line,
 			col: column,
-			token: this.getCodeToken(line, column),
 		}
 	}
 
@@ -241,11 +243,11 @@ export class CodeService extends EventEmitter {
 	 * 读取指定位置的下一个代码
 	 * 如果超出位置则取出 eof
 	 */
-	public readNextChar(ln: number, col: number): CodeChar {
+	public readNextChar(ln: number, col: number): CodeCharWrapper {
 		let line, column;
 		// console.log('readNextChar');
 		// 移动字符
-		if (col >= this.codeLines[ln].code.length - 1) {
+		if (col >= this.codeLines[ln].length - 1) {
 			line = ln + 1;
 			column = 0;
 		} else {
@@ -260,7 +262,7 @@ export class CodeService extends EventEmitter {
 	 * 读取指定位置的上一个代码
 	 * 如果超出位置则取出 bof
 	 */
-	public readPrevChar(ln: number, col: number): CodeChar {
+	public readPrevChar(ln: number, col: number): CodeCharWrapper {
 		let line, column;
 		// 移动字符
 		// console.log('readPrevChar');
@@ -269,7 +271,7 @@ export class CodeService extends EventEmitter {
 			if (line < 0) {
 				column = 0;
 			} else {
-				column = this.codeLines[line].code.length - 1;
+				column = this.codeLines[line].length - 1;
 			}
 		} else {
 			line = ln;
@@ -283,32 +285,32 @@ export class CodeService extends EventEmitter {
 	 * 获取指定位置代码的类型
 	 * 如果超出位置则取出 bof 或 eof
 	 */
-	public getCodeToken(ln: number, col: number): Token {
-		if (ln >= 0 && ln <= this.codeLines.length - 1) {
-			let codeLine = this.codeLines[ln];
-			if (col === codeLine.code.length - 1) {
-				return codeLine.tokenMap[col] || {
-					type: TokenType.endline,
-					value: undefined,
-				};
-			} else {
-				return codeLine.tokenMap[col] || {
-					type: TokenType.unknown,
-					value: undefined,
-				};
-			}
-		} else if (ln >= this.codeLines.length) {
-			return {
-				type: TokenType.eof,
-				value: undefined,
-			};
-		} else {
-			return {
-				type: TokenType.bof,
-				value: undefined,
-			};
-		}
-	}
+	// // public getCodeToken(ln: number, col: number): Token {
+	// // 	if (ln >= 0 && ln <= this.codeLines.length - 1) {
+	// // 		let codeLine = this.codeLines[ln];
+	// // 		if (col === codeLine.code.length - 1) {
+	// // 			return codeLine.tokenMap[col] || {
+	// // 				type: TokenType.endline,
+	// // 				value: undefined,
+	// // 			};
+	// // 		} else {
+	// // 			return codeLine.tokenMap[col] || {
+	// // 				type: TokenType.unknown,
+	// // 				value: undefined,
+	// // 			};
+	// // 		}
+	// // 	} else if (ln >= this.codeLines.length) {
+	// // 		return {
+	// // 			type: TokenType.eof,
+	// // 			value: undefined,
+	// // 		};
+	// // 	} else {
+	// // 		return {
+	// // 			type: TokenType.bof,
+	// // 			value: undefined,
+	// // 		};
+	// // 	}
+	// }
 
 	/**
 	 * 编译
@@ -322,12 +324,14 @@ export class CodeService extends EventEmitter {
 				col: 0,
 			}, {
 				ln: this.codeLines.length - 1,
-				col: this.codeLines[this.codeLines.length - 1].code.length - 1,
+				col: this.codeLines[this.codeLines.length - 1].length - 1,
 			});
+			this.emit(CodeServiceEvent.LexicalReady);
 		}, 300);
 	}
 
 	public getTokenColor(tokenType: TokenType): string {
+		console.log('getTokenColor');
 		switch (tokenType) {
 			case TokenType.error:
 				return '#FF0000'
@@ -420,7 +424,7 @@ export class CodeService extends EventEmitter {
 			case TokenType.note_multiline:
 				return '#AA2222';
 			case TokenType.identifier:
-				return 'AA00AA';
+				return '#AA00AA';
 			case TokenType.keyword:
 			case TokenType.keyword_void:
 			case TokenType.keyword_short:
@@ -432,7 +436,7 @@ export class CodeService extends EventEmitter {
 			case TokenType.keyword_if:
 			case TokenType.keyword_else:
 			case TokenType.keyword_return:
-				return '0000BB';
+				return '#0000BB';
 			default:
 				return '#FF0000';
 		}

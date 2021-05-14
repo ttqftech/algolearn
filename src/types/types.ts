@@ -1,13 +1,14 @@
-export interface CodeLine {
-	code: string;
-	tokenMap: Array<Token>;
-}
+export type CodeLine = Array<CodeChar>;
 
 export interface CodeChar {
 	char: string;	// 字符
+	token: Token;	// 向上对应的词 token
+}
+
+export interface CodeCharWrapper {
 	ln: number;		// 行
 	col: number;	// 列
-	token: Token;	// 向上对应的词 token
+	code: CodeChar;	// 代码字符
 }
 
 export interface Token {

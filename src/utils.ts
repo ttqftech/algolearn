@@ -1,4 +1,4 @@
-import { CodeChar, CodePosition, Keywords, TokenType } from "./types/types";
+import { CodeCharWrapper, CodePosition, Keywords, TokenType } from "./types/types";
 
 export function isTerminator(type: TokenType | number): boolean {
     return [
@@ -77,7 +77,7 @@ export function getKeyWordIndex(code: string) {
     return Keywords.indexOf(code);
 }
 
-export function getCharPosFromCodeChar(c: CodeChar): CodePosition {
+export function getCharPosFromCodeChar(c: CodeCharWrapper): CodePosition {
     return {
         ln: c.ln,
         col: c.col,
