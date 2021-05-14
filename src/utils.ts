@@ -44,7 +44,7 @@ export function isTerminator(type: TokenType | number): boolean {
         TokenType.calc_devide_assign,
         TokenType.calc_minus,
         TokenType.calc_minus_assign,
-        TokenType.calc_add_assign,
+        TokenType.calc_add,
         TokenType.calc_add_assign,
         TokenType.number_bin_int,
         TokenType.number_bin_float,

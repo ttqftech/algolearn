@@ -157,8 +157,10 @@ function move(state: TokenType | number, codeChar: CodeChar): TokenType | number
 	let char = codeChar.char;
 	switch (state) {
 		// 0️⃣0️⃣0️⃣ 0 层 0️⃣0️⃣0️⃣
+		case TokenType.error:
+			return TokenType.error;
 		case TokenType.unknown:
-			if (/\w|_/.test(char)) {
+			if (/[_a-zA-Z]|_/.test(char)) {
 				return TokenType.identifier;
 			}
 			switch (char) {
@@ -702,32 +704,22 @@ export class LexicalAnalysis {
 		this.tokenList.splice(tokenIndexBefore + 1, tokenIndexAfter - tokenIndexBefore - 2);
 		// 进行词法分析
 		let c = this.readCharAt(from.ln, from.col);
-		let lastStart: CodePosition = from;	// 最近一次 token 的开始
-		let lastEnd = c;					// 最近一次 token 的结束，当状态机走到 error 时回退
 		let tokenIndex = tokenIndexBefore + 1;
+		let newToken: Token = {
+			type: TokenType.unknown,
+			value: undefined,
+		};
+		let valueString = '';
 		outer:
 		while (true) {
 			let newState = move(state, c.code);
 			// console.log('move', state, newState, c);
 			if (newState === TokenType.error) {
 				// 状态机走到错误，将前面的内容识别为一个单词
-				// 然后检查上一个字符是不是终结符。依此将整个单词的 TokenType 设为对应类型
-				let newToken: Token = {
-					type: TokenType.unknown,
-					value: undefined,
-				};
-				let valueString: string = "";
-				let subC = this.readCharAt(lastStart.ln, lastStart.col);
-				while (subC.ln !== lastEnd.ln || subC.col !== lastEnd.col) {
-					// 从 lastStart 开始到 lastChar，加入 valueString，并设置 token 引用
-					valueString += subC.code.char;
-					subC.code.token = newToken;
-					subC = this.readNextChar(subC.ln, subC.col);
-				}
-				subC.code.token = newToken;			// 改动 word 里最后一个字符的 token 引用
-				valueString += subC.code.char;
-				newToken.value = getValueFromCodeString(valueString, state);
+				// 然后检查上一个字符是不是终结状态。依此将整个单词的 TokenType 设为对应类型
+				// 此时 newToken 还存着上一次字符的引用，因此先把这个改好，再去新建 newToken
 				newToken.type = isTerminator(state) ? state : TokenType.error;
+				newToken.value = getValueFromCodeString(valueString, state);
 				// 识别 identifier 是不是一个 keyword
 				if (newToken.type === TokenType.identifier) {
 					let keywordIndex = getKeyWordIndex(newToken.value);
@@ -736,8 +728,9 @@ export class LexicalAnalysis {
 						newToken.value = undefined;
 					}
 				}
+				// 除去注释，在 tokenList 中插入新 token
 				if (newToken.type !== TokenType.note_singleline && newToken.type !== TokenType.note_multiline) {
-					this.tokenList.splice(tokenIndex++, 0, newToken);	// 在 tokenList 中插入新 token
+					this.tokenList.splice(tokenIndex++, 0, newToken);
 				}
 				// ⬆️ 上一个 token 的相关操作　⬇️ 当前字符的再操作
 				state = TokenType.unknown;		// 状态机重置
@@ -749,13 +742,19 @@ export class LexicalAnalysis {
 						break outer;
 					}		
 					state = move(state, c.code);
-					// console.log('move', TokenType.unknown, newState, c);
-					lastStart = c;			// 重新设定 token 的开始
+					// console.log('move', TokenType.unknown, state, c);
 				}
+				// 为 newToken 设置新引用
+				newToken = {
+					type: TokenType.unknown,
+					value: undefined,
+				};
+				valueString = '';
 			} else {
-				state = newState;		// 状态机设为新值
+				state = newState;			// 状态机设为新值
 			}
-			lastEnd = c;
+			c.code.token = newToken;	// 将这个字符打上引用
+			valueString += c.code.char;
 			// 如果到达区间末尾，则退出循环，否则往后读取
 			if (c.ln === to.ln && c.col === to.col) {
 				break;

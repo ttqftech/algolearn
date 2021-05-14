@@ -331,7 +331,6 @@ export class CodeService extends EventEmitter {
 	}
 
 	public getTokenColor(tokenType: TokenType): string {
-		console.log('getTokenColor');
 		switch (tokenType) {
 			case TokenType.error:
 				return '#FF0000'
@@ -413,25 +412,25 @@ export class CodeService extends EventEmitter {
 			case TokenType.number_hex_int:
 			case TokenType.number_hex_float:
 			case TokenType.number_hex_float_e:
-				return '#3377CC';
+				return '#22AA66';
 			case TokenType.char_char:
 			case TokenType.char_string:
 				return '#FF0000';		// 暂不支持
 			case TokenType.bool_true:
 			case TokenType.bool_false:
-				return '#3377CC';
+				return '#22AA66';
 			case TokenType.note_singleline:
 			case TokenType.note_multiline:
-				return '#AA2222';
+				return '#22AA22';
 			case TokenType.identifier:
-				return '#AA00AA';
-			case TokenType.keyword:
+				return '#990099';
 			case TokenType.keyword_void:
 			case TokenType.keyword_short:
 			case TokenType.keyword_int:
 			case TokenType.keyword_long:
 			case TokenType.keyword_float:
 			case TokenType.keyword_double:
+				return '#2277CC';
 			case TokenType.keyword_while:
 			case TokenType.keyword_if:
 			case TokenType.keyword_else:
