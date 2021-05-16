@@ -685,10 +685,14 @@ export class LexicalAnalysis {
 		this.readNextChar = requiredFunction.readNextChar;
 	}
 
+	public getTokenList(): Array<Token> {
+		return this.tokenList;
+	}
+
 	/**
 	 * 对指定的段落进行词法分析
 	 */
-	public analyze(from: CodePosition, to: CodePosition) {
+	public analyze(from: CodePosition, to: CodePosition): Array<Token> {
 		let state: TokenType | number = 0;
 		// 清空 tokenList 原位置的 token，寻找合适的插入位置
 		let tokenIndexBefore: number = -1;
@@ -765,7 +769,6 @@ export class LexicalAnalysis {
 				break;
 			}
 		}
-		console.log('tokenList', this.tokenList);
+		return this.getTokenList();
 	}
-
 }

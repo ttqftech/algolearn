@@ -1,9 +1,21 @@
 .code-editor {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
 	background: white;
 	box-shadow: 0 0 8px hsla(0, 0%, 20%, 0.25);
+	.dragger {
+		position: absolute;
+		left: -16px;
+		top: calc(50% - 16px);
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background-color: white;
+		box-shadow: 0px 2px 6px rgba(0,0,0,0.5);
+		cursor: w-resize;
+	}
 	.controller {
 		display: flex;
 		justify-content: stretch;
@@ -42,6 +54,7 @@
 			font-family: Monaco, source-code-pro, Menlo, Consolas, 'Courier New', monospace;
 		}
 		.lnarea {
+			position: relative;
 			width: 36px;
 			pointer-events: none;
 			.index {

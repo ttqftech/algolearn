@@ -1,6 +1,7 @@
 import EventEmitter from "events";
 import { CodeChar, CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
 import { mid } from "../utils";
+import { GrammarAnalysis } from "./GrammarAnalysis";
 import { LexicalAnalysis } from "./LexicalAnalysis";
 // import { LexicalAnalysis } from "./LexicalAnalysis";
 
@@ -41,6 +42,7 @@ const endlineChar = {
 export class CodeService extends EventEmitter {
 	private codeLines: Array<CodeLine>;
 	private lexicalAnalyzer: LexicalAnalysis;
+	private grammarAnalyzer: GrammarAnalysis;
 	private antishakeTimer: any = 0;
 
 	constructor() {
@@ -56,6 +58,7 @@ export class CodeService extends EventEmitter {
 		this.on(CodeServiceEvent.CodeUpdated, () => {
 			this.ScanCode();
 		});
+		this.grammarAnalyzer = new GrammarAnalysis();
 	}
 
 	public getCodeLines(): Array<CodeLine> {
@@ -108,6 +111,16 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
+	 * 替换全部代码
+	 */
+	public resetCode(content: string): void {
+		this.codeLines = [
+			[endlineChar]
+		];
+		this.insertCode(content, 0, 0);
+	}
+
+	/**
 	 * 在某个位置插入代码
 	 */
 	public insertCode(content: string, ln: number, col: number): CodePosition {
@@ -117,7 +130,7 @@ export class CodeService extends EventEmitter {
 		}
 		content = content.replace(/\r\n/g, '\n');
 		content = content.replace(/\r/g, '\n');
-		// 
+		// 插入操作
 		let originCodeLine = this.codeLines[ln];
 		let newCodeLines: Array<CodeLine> = content.split('\n').map((str) => this.stringToCodeChar(str + '\n'));
 		newCodeLines[0].unshift(...originCodeLine.slice(0, col));
@@ -282,50 +295,20 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
-	 * 获取指定位置代码的类型
-	 * 如果超出位置则取出 bof 或 eof
-	 */
-	// // public getCodeToken(ln: number, col: number): Token {
-	// // 	if (ln >= 0 && ln <= this.codeLines.length - 1) {
-	// // 		let codeLine = this.codeLines[ln];
-	// // 		if (col === codeLine.code.length - 1) {
-	// // 			return codeLine.tokenMap[col] || {
-	// // 				type: TokenType.endline,
-	// // 				value: undefined,
-	// // 			};
-	// // 		} else {
-	// // 			return codeLine.tokenMap[col] || {
-	// // 				type: TokenType.unknown,
-	// // 				value: undefined,
-	// // 			};
-	// // 		}
-	// // 	} else if (ln >= this.codeLines.length) {
-	// // 		return {
-	// // 			type: TokenType.eof,
-	// // 			value: undefined,
-	// // 		};
-	// // 	} else {
-	// // 		return {
-	// // 			type: TokenType.bof,
-	// // 			value: undefined,
-	// // 		};
-	// // 	}
-	// }
-
-	/**
 	 * 编译
 	 */
 	public ScanCode(): void {
 		clearInterval(this.antishakeTimer);
 		this.antishakeTimer = setTimeout(() => {
 			console.log('scanCode');
-			this.lexicalAnalyzer.analyze({
+			let tokenList = this.lexicalAnalyzer.analyze({
 				ln: 0,
 				col: 0,
 			}, {
 				ln: this.codeLines.length - 1,
 				col: this.codeLines[this.codeLines.length - 1].length - 1,
 			});
+			console.log(tokenList);
 			this.emit(CodeServiceEvent.LexicalReady);
 		}, 300);
 	}

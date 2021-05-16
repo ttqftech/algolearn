@@ -12,6 +12,7 @@ import CodeEditor from './CodeEditor';
 interface State {
 	courseIndex?: CourseIndex;
 	courseRef?: BaseCourse;
+	codeEditorRef?: CodeEditor;
 }
 
 class App extends React.Component<{}, State> {
@@ -34,6 +35,11 @@ class App extends React.Component<{}, State> {
 			courseIndex
 		});
 		document.title = 'algolearn - ' + getCourseByChapterIndex(courseIndex)!.title;
+		setTimeout(() => {
+			if (this.state.courseRef) {
+				this.state.codeEditorRef?.setCode(this.state.courseRef.getBaseCode());
+			}
+		}, 0);
 	}
 
 	/**
@@ -42,6 +48,15 @@ class App extends React.Component<{}, State> {
 	bindCourseRef(ref: BaseCourse) {
 		this.setState({
 			courseRef: ref
+		});
+	}
+
+	/**
+	 * 课程加载完成后由子组件 onRef 触发
+	 */
+	bindCodeEditorRef(ref: CodeEditor) {
+		this.setState({
+			codeEditorRef: ref
 		});
 	}
 
@@ -84,6 +99,7 @@ class App extends React.Component<{}, State> {
 							{/* <button onClick={this.handleClick.bind(this)}></button> */}
 							<CodeEditor
 								onVariableChanged={this.handleValueChanged.bind(this)}
+								onRef={this.bindCodeEditorRef.bind(this)}
 							></CodeEditor>
 						</>
 					)}

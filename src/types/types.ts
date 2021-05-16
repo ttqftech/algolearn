@@ -1,5 +1,7 @@
 export type CodeLine = Array<CodeChar>;
 
+// #region 代码服务和核心部分
+
 export interface CodeChar {
 	char: string;	// 字符
 	token: Token;	// 向上对应的词 token
@@ -115,6 +117,20 @@ export enum TokenType {
 
 export const Keywords = ['void','short','int','long','float','double','char','for','while','do','if','else','switch','case','break','continue','return'];
 
+export interface Production {
+	NT: string;			// 非终结符
+	T: Array<string>;	// 终结符
+}
+
+export interface SyntaxNode {
+	symbol: string;	// 终结/非终结符
+	value?: any;
+}
+
+// #endregion
+
+// #region 非核心部分
+
 export interface CourseIndex {
 	chapter: number;
 	section: number;
@@ -139,3 +155,5 @@ export interface ChangedVariable<T> {
 	name: string;
 	value: T;
 }
+
+// #endregion

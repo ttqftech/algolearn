@@ -2,7 +2,7 @@ import React from "react";
 import { ChangedVariable, ListeningVariable } from "../types/types";
 
 export abstract class BaseCourse<Props = {}, State = {}> extends React.Component<Props, State> {
-	// 调用父组件传入的 onRef（要求父组件必须有此 prop）
+	// 父组件需要在 props 里传入 onRef，这里组件挂载后自动调用，用于给父组件获取对该组件的 ref 引用
 	componentDidMount(): void {
 		(this.props as any).onRef(this);
 	}
