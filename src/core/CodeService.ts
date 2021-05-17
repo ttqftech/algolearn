@@ -303,6 +303,7 @@ export class CodeService extends EventEmitter {
 		this.antishakeTimer = setTimeout(() => {
 			let startTime: number;
 			console.log('ScanCode');
+			
 			startTime = new Date().getTime();
 			let tokenList = this.lexicalAnalyzer.analyze({
 				ln: 0,
@@ -312,9 +313,15 @@ export class CodeService extends EventEmitter {
 				col: this.codeLines[this.codeLines.length - 1].length - 1,
 			});
 			console.log('tokenList', tokenList, `词法分析耗时：${new Date().getTime() - startTime} ms`);
+			
 			startTime = new Date().getTime();
-			let node = this.grammarAnalyzer.analyze(tokenList);
-			console.log('nodeTree', node, `语法分析耗时：${new Date().getTime() - startTime} ms`)
+			let grammarNode = this.grammarAnalyzer.grammarAnalyze(tokenList);
+			console.log('nodeTree', grammarNode, `语法分析耗时：${new Date().getTime() - startTime} ms`);
+
+			startTime = new Date().getTime();
+			let programNode = this.grammarAnalyzer.semanticAnalyze();
+			console.log('programNode', programNode, `变量表分析耗时：${new Date().getTime() - startTime} ms`);
+
 			this.emit(CodeServiceEvent.LexicalReady);
 		}, 300);
 	}

@@ -149,6 +149,15 @@ export interface VariableType {
 }
 
 /**
+ * 单个变量的信息
+ */
+export interface Variable {
+	name: string;
+	type: VariableType;
+	value?: any;
+}
+
+/**
  * 关键字列表
  */
 export const Keywords = ['void','short','int','long','float','double','char','for','while','do','if','else','switch','case','break','continue','return'];
@@ -185,8 +194,8 @@ export interface FunctionNode {
 	// function_definition -> return_type function_name compound_statement
 	returnType: VariableType,
 	name: string,
-	parameterList: Array<VariableType>,
-	variableList: Array<VariableType>,
+	parameterList: Array<Variable>,
+	variableList: Array<Variable>,
 	statementNode: SyntaxNode,
 }
 
