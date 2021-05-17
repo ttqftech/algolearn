@@ -1,8 +1,43 @@
-import { Production, SyntaxNode, Token, TokenType } from "../types/types";
+import { BasicType, FunctionNode, Production, ProgramNode, SyntaxNode, Token, TokenType, VariableType } from "../types/types";
 
 const LR: Array<Array<string>> = [];
 const hash: Map<string, number> = new Map();	// 将符号字符串映射到 LR 表中的列号
 const productions: Array<Production> = [];		// 文法（产生式）列表
+
+function getVariableTypeBySyntaxNode(node: SyntaxNode): VariableType {
+	if (node.symbol === 'variable_type') {	// 基本类型
+		switch (node.children![0].symbol) {
+			case 'INT':
+				return { basic: BasicType.integer };
+			case 'FLOAT':
+				return { basic: BasicType.float };
+			case 'VOID':
+				return { basic: BasicType.void };
+			default:
+				throw new Error("变量类型错误");
+		}
+	} else if (node.symbol === 'variable_definition') {	// 函数体内的变量声明
+		if (node.children![2].symbol === 'array_closure') {
+			let numArray: Array<number> = [];
+			let subNode = node.children![2];
+			numArray.push(subNode.children![1].value);	// 记录一维长度
+			while (subNode.children?.length === 4) {
+				numArray.push(subNode.children![2].value);
+			}
+			numArray.push(subNode.children![2].value);	// 记录最后一维长度
+			return {
+				basic: getVariableTypeBySyntaxNode(node.children![0]).basic,
+				length: numArray,
+			};
+		} else {
+			return {
+				basic: getVariableTypeBySyntaxNode(node.children![0]).basic,
+			}
+		}
+	} else {
+		throw new Error("变量类型错误");
+	}
+}
 
 function convertTokenType2LRtitle(tokenType: TokenType): string {
 	switch (tokenType) {
@@ -60,7 +95,6 @@ function convertTokenType2LRtitle(tokenType: TokenType): string {
 		case TokenType.number_hex_int:
 		case TokenType.number_hex_float:
 		case TokenType.number_hex_float_e:
-		case TokenType.keyword_return:
 			return 'NUM';
 		case TokenType.keyword_return:
 			return 'RETURN';
@@ -82,13 +116,22 @@ function convertTokenType2LRtitle(tokenType: TokenType): string {
 }
 
 export class GrammarAnalysis {
+	private syntaxTree?: SyntaxNode
+
 	constructor() {
 		console.log('LR', LR);
 		console.log('hash', hash);
 		console.log('productions', productions);
 	}
 
-	public analyze(tokenList: Array<Token>) {
+	public analyze(tokenList: Array<Token>): SyntaxNode {
+		return this.grammarAnalyze(tokenList);
+	}
+
+	/**
+	 * 对全文进行语法分析，产出语法树
+	 */
+	public grammarAnalyze(tokenList: Array<Token>): SyntaxNode {
 		let stackStatus: Array<number> = [];	// 状态栈
 		let stackNode: Array<SyntaxNode> = [];	// 符号栈
 		let tokenIndex = 0;						// 输入“栈”
@@ -121,34 +164,85 @@ export class GrammarAnalysis {
 				action = action.slice(1);					// 删掉“s”
 				let prod = productions[parseInt(action)];	// 使用第几条产生式归约
 				let len = prod.T.length;					// 要被归约的长度
-				while (len--) {
-					stackStatus.pop();
-					stackNode.pop();
-				}
 				let node: SyntaxNode = {
-					symbol: prod.NT
+					symbol: prod.NT,
+					children: [],
 				};
-				stackNode.push()
-
+				while (len--) {
+					stackStatus.pop();						// 状态栈出栈
+					node.children!.unshift(stackNode.pop()!);	// 符号栈出栈，丢出来的东西作为父节点的孩子
+				}
+				stackNode.push(node);						// 符号栈进栈
+				topStatus = stackStatus[stackStatus.length - 1]
+				let newStatus = parseInt(LR[topStatus][hash.get(prod.NT)!]);	// 状态栈进栈
+				stackStatus.push(newStatus);
 			}
-			
+		}
+		this.syntaxTree = stackNode[stackNode.length - 1];
+		return this.syntaxTree;		// 返回根节点
+	}
+
+	/**
+	 * 分析变量表
+	 */
+	public semanticAnalyze(): ProgramNode {
+		let programNode: ProgramNode = {
+			functionList: []
+		};
+		let syntaxTree = this.syntaxTree;
+		
+		function DFA(node: SyntaxNode, thing?: any): SyntaxNode {
+			let continueDFA: Boolean = true;
+			if (node.symbol === 'function_definition') {
+				continueDFA = function_definition(node);
+			} else if (node.symbol === 'variable_definition') {
+				continueDFA = variable_definition(node, thing);
+			}
+			// DFA 函数的作用是从某个节点开始往下挖，直到挖到需要的东西，然后继续分析
+			// 后续分析时可能需要带上不同的 thing，用于构建 ProgramNode，因此在某个节点停下就可以了
+			if (continueDFA && node.children) {
+				for (const child of node.children) {
+					DFA(child, thing);
+				}
+			}
+			return node;	// 返回停留在的节点
+		}
+		
+		function function_definition(node: SyntaxNode): boolean {
+			let newFunc: FunctionNode = {
+				returnType: getVariableTypeBySyntaxNode(node.children![0]),
+				name: '',
+				parameterList: [],
+				variableList: [],
+				statementNode: node,
+			}
+			programNode.functionList.push(newFunc);
+			DFA(node.children![3], newFunc.variableList);	// 让 DFA 去找 variable_definition
+
+			return false;
 		}
 
+		function variable_definition(node: SyntaxNode, thing: Array<VariableType>) {
+			thing.push(getVariableTypeBySyntaxNode(node));
+			return true;
+		}
+		DFA(syntaxTree!);	// 让 DFA 去找 function_definition
+		return programNode;
 	}
 }
 
 // #region 手动输入语法区
 
-const LRstr = `err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err 4 5 err err err err err err err 6 err 7 err err err err err 8 9 10 
+const LRstr = `err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err 4 5 err err err err err err 6 err 7 err err err err err 8 9 10 
 err err err err err err err err err err err err err err err err err err r9 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 err err err err err err err err err err err err err err err err err err r8 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 err err err err err err err err err err err err err err err err err err r6 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r3 err err err err err err err err err err err err err err err err err err s11 err err s3 err err err err err err err err err err err err 4 12 err err err err err err err err err 7 err err err err err err err err 
+err r3 err err err err err err err err err err err err err err err err err err s11 err err s3 err err err err err err err err err err err err err 4 12 err err err err err err err err 7 err err err err err err err err 
 err r1 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 err acc err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err s13 err err err err err err err err err err err err err err err err err err err 14 err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err s13 err err err err err err err err err err err err err err err err err 14 err err err err err err err err err err err err err err err err err err err 
 err err err err err err err err err err err err err err err err err s1 err err s15 err err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 8 16 10 
-err err err err err err err err err err err err err err err err err err err err s11 err err s3 err err err err err err err err err err err err 4 17 err err err err err err err err err 7 err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err s11 err err s3 err err err err err err err err err err err err err 4 17 err err err err err err err err 7 err err err err err err err err 
 err err err err err err err err err err err err err err err err err err s18 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 err err err err err err err err err err err err err err err err err err r7 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 err r4 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
@@ -348,22 +442,22 @@ err err s29 err err s30 err s31 err s171 err err err err err err err err s33 s17
 err err r35 err err r35 err r35 err r35 err err err err err err r35 err r35 r35 err r35 r35 err r35 err err r35 r35 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 `;
 
-const LRtitle = `!=                               #                               (                               )                               *                               +                               ,                               -                               /                               ;                               <                              <=                               =                              ==                               >                              >=                            ELSE                           FLOAT                              ID                              IF                             INT                             NUM                          RETURN                            VOID                           WHILE                               [                               ]                               {                               }|             additive_expression                   array_closure           assignment_expression              compound_statement             equality_expression                      expression            expression_statement             function_definition        function_definition_list                   function_name             iteration_statement                  jump_statement       multiplicative_expression           parameter_declaration                  parameter_list              primary_expression                         program           relational_expression                     return_type             selection_statement                       statement                  statement_list                unary_expression                  unary_operator             variable_definition        variable_definition_list                   variable_type`;
+const LRtitle = `!=                               #                               (                               )                               *                               +                               ,                               -                               /                               ;                               <                              <=                               =                              ==                               >                              >=                            ELSE                           FLOAT                              ID                              IF                             INT                             NUM                          RETURN                            VOID                           WHILE                               [                               ]                               {                               }|             additive_expression                   array_closure           assignment_expression              compound_statement             equality_expression                      expression            expression_statement            function_declaration             function_definition        function_definition_list             iteration_statement                  jump_statement       multiplicative_expression           parameter_declaration                  parameter_list              primary_expression                         program           relational_expression                     return_type             selection_statement                       statement                  statement_list                unary_expression                  unary_operator             variable_definition        variable_definition_list                   variable_type`;
 
 const grammarStr = `program' -> program
 program -> function_definition_list
 program -> variable_definition_list function_definition_list
 function_definition_list -> function_definition
 function_definition_list -> function_definition function_definition_list
-function_definition -> return_type function_name compound_statement
+function_definition -> return_type function_declaration compound_statement
 return_type -> VOID
 return_type -> INT
 variable_type -> INT
 variable_type -> FLOAT
 array_closure -> [ NUM ] array_closure
 array_closure -> [ NUM ]
-function_name -> ID ( )
-function_name -> ID ( parameter_list )
+function_declaration -> ID ( )
+function_declaration -> ID ( parameter_list )
 parameter_list -> parameter_declaration
 parameter_list -> parameter_declaration , parameter_list
 parameter_declaration -> variable_type ID

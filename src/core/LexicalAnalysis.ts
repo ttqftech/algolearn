@@ -690,28 +690,30 @@ export class LexicalAnalysis {
 	}
 
 	/**
-	 * 对指定的段落进行词法分析
+	 * 对指定的段落进行词法分析，产出 token list
 	 */
 	public analyze(from: CodePosition, to: CodePosition): Array<Token> {
+		let tokenList = this.tokenList;
 		let state: TokenType | number = 0;
 		// 清空 tokenList 原位置的 token，寻找合适的插入位置
 		let tokenIndexBefore: number = -1;
 		let charBefore = this.readPrevChar(from.ln, from.col);
 		if (charBefore.code.token.type !== TokenType.bof) {
-			tokenIndexBefore = this.tokenList.findIndex((token) => token === charBefore.code.token);
+			tokenIndexBefore = tokenList.findIndex((token) => token === charBefore.code.token);
 		}
 		let tokenIndexAfter: number = Number.MAX_SAFE_INTEGER;
 		let charAfter = this.readNextChar(to.ln, to.col);
 		if (charAfter.code.token.type !== TokenType.eof) {
-			tokenIndexAfter = this.tokenList.findIndex((token) => token === charAfter.code.token);
+			tokenIndexAfter = tokenList.findIndex((token) => token === charAfter.code.token);
 		}
-		this.tokenList.splice(tokenIndexBefore + 1, tokenIndexAfter - tokenIndexBefore - 2);
+		tokenList.splice(tokenIndexBefore + 1, tokenIndexAfter - tokenIndexBefore - 2);
 		// 进行词法分析
 		let c = this.readCharAt(from.ln, from.col);
 		let tokenIndex = tokenIndexBefore + 1;
 		let newToken: Token = {
 			type: TokenType.unknown,
 			value: undefined,
+			firstCode: c.code,
 		};
 		let valueString = '';
 		outer:
@@ -734,7 +736,7 @@ export class LexicalAnalysis {
 				}
 				// 除去注释，在 tokenList 中插入新 token
 				if (newToken.type !== TokenType.note_singleline && newToken.type !== TokenType.note_multiline) {
-					this.tokenList.splice(tokenIndex++, 0, newToken);
+					tokenList.splice(tokenIndex++, 0, newToken);
 				}
 				// ⬆️ 上一个 token 的相关操作　⬇️ 当前字符的再操作
 				state = TokenType.unknown;		// 状态机重置
@@ -752,6 +754,7 @@ export class LexicalAnalysis {
 				newToken = {
 					type: TokenType.unknown,
 					value: undefined,
+					firstCode: c.code,
 				};
 				valueString = '';
 			} else {
@@ -768,6 +771,13 @@ export class LexicalAnalysis {
 			if (c.code.token.type === TokenType.eof) {
 				break;
 			}
+		}
+		// 如果 tokenList 不为空，且最后没有 eof，那么插入 eof
+		if (tokenList.length && tokenList[tokenList.length - 1].type !== TokenType.eof) {
+			tokenList.push({
+				type: TokenType.eof,
+				value: undefined,
+			});
 		}
 		return this.getTokenList();
 	}

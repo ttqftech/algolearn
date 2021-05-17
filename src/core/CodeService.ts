@@ -31,7 +31,7 @@ const eofChar: CodeChar = {
 	}
 }
 
-const endlineChar = {
+const endlineChar: CodeChar = {
 	char: '\n',
 	token: {
 		type: TokenType.endline,
@@ -55,6 +55,7 @@ export class CodeService extends EventEmitter {
 			readCharAt: this.readCharAt.bind(this),
 			readNextChar: this.readNextChar.bind(this),
 		});
+		this.grammarAnalyzer = new GrammarAnalysis();
 		this.on(CodeServiceEvent.CodeUpdated, () => {
 			this.ScanCode();
 		});
@@ -300,7 +301,9 @@ export class CodeService extends EventEmitter {
 	public ScanCode(): void {
 		clearInterval(this.antishakeTimer);
 		this.antishakeTimer = setTimeout(() => {
-			console.log('scanCode');
+			let startTime: number;
+			console.log('ScanCode');
+			startTime = new Date().getTime();
 			let tokenList = this.lexicalAnalyzer.analyze({
 				ln: 0,
 				col: 0,
@@ -308,7 +311,10 @@ export class CodeService extends EventEmitter {
 				ln: this.codeLines.length - 1,
 				col: this.codeLines[this.codeLines.length - 1].length - 1,
 			});
-			console.log(tokenList);
+			console.log('tokenList', tokenList, `词法分析耗时：${new Date().getTime() - startTime} ms`);
+			startTime = new Date().getTime();
+			let node = this.grammarAnalyzer.analyze(tokenList);
+			console.log('nodeTree', node, `语法分析耗时：${new Date().getTime() - startTime} ms`)
 			this.emit(CodeServiceEvent.LexicalReady);
 		}, 300);
 	}

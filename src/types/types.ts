@@ -2,27 +2,43 @@ export type CodeLine = Array<CodeChar>;
 
 // #region 代码服务和核心部分
 
+/**
+ * 代码中的单个字符
+ */
 export interface CodeChar {
 	char: string;	// 字符
 	token: Token;	// 向上对应的词 token
 }
 
+/**
+ * 单个代码字符外夹位置信息
+ */
 export interface CodeCharWrapper {
 	ln: number;		// 行
 	col: number;	// 列
 	code: CodeChar;	// 代码字符
 }
 
+/**
+ * 词法单元
+ */
 export interface Token {
 	type: TokenType;
 	value: any;
+	firstCode?: CodeChar;	// token
 }
 
+/**
+ * 代码位置信息
+ */
 export interface CodePosition {
 	ln: number;
 	col: number;
 }
 
+/**
+ * Token 类型，同时为词法分析自动机的状态
+ */
 export enum TokenType {
 	error = -1,			// 状态机终态或非终态过后读取到的无法转移状态
 	unknown = 0,		// 未读取
@@ -115,16 +131,63 @@ export enum TokenType {
 	bof = 9998,					// 文件开头第 -1 个字符（无效位置）
 }
 
+/**
+ * 本工程基本数据类型
+ */
+export enum BasicType {
+	integer = 'INT',
+	float = 'FLOAT',
+	void = 'VOID',
+}
+
+/**
+ * 本工程基本数据类型加数组
+ */
+export interface VariableType {
+	basic: BasicType,
+	length?: Array<number>,	// n 维数组，每维数组的长度
+}
+
+/**
+ * 关键字列表
+ */
 export const Keywords = ['void','short','int','long','float','double','char','for','while','do','if','else','switch','case','break','continue','return'];
 
+/**
+ * 文法产生式
+ */
 export interface Production {
 	NT: string;			// 非终结符
 	T: Array<string>;	// 终结符
 }
 
+/**
+ * 语法树节点
+ */
 export interface SyntaxNode {
 	symbol: string;	// 终结/非终结符
 	value?: any;
+	children?: Array<SyntaxNode>;	// 非终结符的子树
+}
+
+/**
+ * 简化的语法树
+ */
+export interface ProgramNode {
+	functionList: Array<FunctionNode>;
+}
+
+/**
+ * 简化的语法树→函数节点
+ * 理论上认为所有需要监听的变量都在这层，因此不往下探了
+ */
+export interface FunctionNode {
+	// function_definition -> return_type function_name compound_statement
+	returnType: VariableType,
+	name: string,
+	parameterList: Array<VariableType>,
+	variableList: Array<VariableType>,
+	statementNode: SyntaxNode,
 }
 
 // #endregion
