@@ -3,6 +3,9 @@ import { CodeService, CodeServiceEvent } from "../core/CodeService";
 import { ChangedVariable, CodeCharWrapper, CodePosition, TokenType } from "../types/types";
 import './CodeEditor.scss'
 
+const CW = 9;		// 每字符宽度
+const CH = 20;		// 每行高度
+
 interface Props {
 	onRef: (_this: CodeEditor) => void;
 	onVariableChanged<T>(changedVariable: ChangedVariable<T>): void;	// 变量发生变化时由父组件调用
@@ -12,6 +15,9 @@ interface State {
 	width: number;
 	pointerPos: CodePosition;
 	focused: boolean;
+	codeareaSize: {
+		width: number;
+	}
 	runningLine: number;
 }
 
@@ -30,6 +36,9 @@ class CodeEditor extends React.Component<Props, State> {
 				col: 0,
 			},
 			focused: false,
+			codeareaSize: {
+				width: 0,
+			},
 			runningLine: -1,
 		};
 		this.codeService = new CodeService();
@@ -49,11 +58,60 @@ class CodeEditor extends React.Component<Props, State> {
 	mountCodeServiceEvent() {
 		this.codeService.on(CodeServiceEvent.CodeUpdated, () => {
 			// console.log('CodeUpdated');
-			this.setState({});
+			this.refreshCodeareaSize();
+			// this.setState({});
 		})
 		this.codeService.on(CodeServiceEvent.LexicalReady, () => {
 			this.setState({});
 		})
+	}
+
+	/**
+	 * 每次输入代码后都刷新代码区域蒙层的大小
+	 */
+	refreshCodeareaSize() {
+		let codeLines = this.codeService.getCodeLines();
+		let longestCodeLine: number = 0;
+		for (const codeLine of codeLines) {
+			longestCodeLine = Math.max(longestCodeLine, codeLine.length);
+		}
+		this.setState({
+			codeareaSize: {
+				width: longestCodeLine * CW,
+			}
+		})
+	}
+
+	/**
+	 * 每次移动光标都使光标进入画面
+	 */
+	scrollPointerIntoView(position: CodePosition): void {
+		let pointerLeft = position.col * CW;
+		let pointerTop = position.ln * CH;
+		let ref = this.codeareaElemRef!;
+		if (pointerLeft > ref.offsetWidth + ref.scrollLeft - CW) {
+			let sl = pointerLeft - ref.offsetWidth + CW;
+			setTimeout((ref) => {
+				ref.scrollLeft = sl;
+			}, 0, ref);
+		} else if (pointerLeft < ref.scrollLeft + CW) {
+			let sl = pointerLeft - CW;
+			setTimeout((ref) => {
+				ref.scrollLeft = sl;
+			}, 0, ref);
+		}
+		ref = ref.parentElement as HTMLDivElement;
+		if (pointerTop > ref.offsetHeight + ref.scrollTop - CH) {
+			let sl = pointerTop - ref.offsetHeight + CH;
+			setTimeout((ref) => {
+				ref.scrollTop = sl;
+			}, 0, ref);
+		} else if (pointerTop < ref.scrollTop + CH) {
+			let sl = pointerTop - CH;
+			setTimeout((ref) => {
+				ref.scrollTop = sl;
+			}, 0, ref);
+		}
 	}
 
 	/**
@@ -82,6 +140,7 @@ class CodeEditor extends React.Component<Props, State> {
 			pointerPos: newPos
 		});
 		element.value = '';
+		this.scrollPointerIntoView(newPos);
 	}
 
 	/**
@@ -90,7 +149,7 @@ class CodeEditor extends React.Component<Props, State> {
 	onKeyDown(event: any) {
 		// console.log(event);
 		let { ln, col } = this.state.pointerPos;
-		let newChar: CodeCharWrapper;	// 临时值
+		let newChar: CodeCharWrapper | undefined;	// 临时值
 		switch (event.key) {
 			case 'ArrowLeft':
 				newChar = this.codeService.readPrevChar(ln, col);
@@ -161,6 +220,9 @@ class CodeEditor extends React.Component<Props, State> {
 		// 	default:
 		// 		break;
 		}
+		if (newChar) {
+			this.scrollPointerIntoView(newChar);
+		}
 		this.restartPointerAnimation();
 	}
 
@@ -173,7 +235,7 @@ class CodeEditor extends React.Component<Props, State> {
 		}
 		let x = event.nativeEvent.offsetX;
 		let y = event.nativeEvent.offsetY - 6;
-		let newChar = this.codeService.readCharAt(Math.round(y / 20), Math.round(x / 9));
+		let newChar = this.codeService.readCharAt(Math.round(y / CH), Math.round(x / CW));
 		this.setState({
 			pointerPos: {
 				ln: newChar.ln,
@@ -228,44 +290,42 @@ class CodeEditor extends React.Component<Props, State> {
 	render() {
 		return (
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
+				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
 				<div className="controller">
 					<button>开始</button>
 					<button>单步</button>
 					<button>停止</button>
 					<button>重启</button>
 				</div>
-				<div className="editor-wrapper">
-					<div className="editor">
-						<div className="lnarea">
-							{this.codeService.getCodeLines().map((codeLine, ln) => {
-								return (
-									<div className="index" key={ln}>{ln + 1}</div>
-								)
-							})}
-						</div>
-						<div className="codearea" ref={div => this.codeareaElemRef = div}>
-							<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * 9 + 3}px`, top: `${this.state.pointerPos.ln * 20}px` }} ref={div => this.pointerElemRef = div} />
-							{this.codeService.getCodeLines().map((codeLine, ln) => {
-								return (
-									<div className="codeline" key={ln}>
-										<div className="content">
-											{/* {codeLine.code} */}
-											{codeLine.map((code, col) => {
-												let color: string;
-												color = this.codeService.getTokenColor(code.token.type);
-												return (
-													<div className="char" key={col} style={{ color: color }}>{code.char}</div>
-												)
-											})}
-										</div>
-									</div>
-								)
-							})}
-						</div>
+				<div className="editor">
+					<div className="lnarea">
+						{this.codeService.getCodeLines().map((codeLine, ln) => {
+							return (
+								<div className="index" key={ln}>{ln + 1}</div>
+							)
+						})}
 					</div>
-					<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} />
+					<div className="codearea" ref={div => this.codeareaElemRef = div}>
+						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} style={{ width: this.state.codeareaSize.width }} />
+						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * CW + 3}px`, top: `${this.state.pointerPos.ln * CH}px` }} ref={div => this.pointerElemRef = div} />
+						{this.codeService.getCodeLines().map((codeLine, ln) => {
+							return (
+								<div className="codeline" key={ln}>
+									<div className="content">
+										{/* {codeLine.code} */}
+										{codeLine.map((code, col) => {
+											let color: string;
+											color = this.codeService.getTokenColor(code.token.type);
+											return (
+												<div className="char" key={col} style={{ color: color }}>{code.char}</div>
+											)
+										})}
+									</div>
+								</div>
+							)
+						})}
+					</div>
 				</div>
-				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
 			</div>
 		)
 	}

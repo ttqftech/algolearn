@@ -5,6 +5,17 @@
 	height: 100%;
 	background: white;
 	box-shadow: 0 0 8px hsla(0, 0%, 20%, 0.25);
+	.dragger {
+		position: absolute;
+		left: -16px;
+		top: calc(50% - 16px);
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background-color: white;
+		box-shadow: 0px 2px 6px rgba(0,0,0,0.5);
+		cursor: w-resize;
+	}
 	.controller {
 		display: flex;
 		justify-content: stretch;
@@ -32,86 +43,74 @@
 			}
 		}
 	}
-	.editor-wrapper {
+	.editor {
 		position: relative;
+		background-color: white;
 		flex-grow: 1;
-		max-height: calc(100% - 40px);
-		.editor {
-			display: flex;
-			max-height: 100%;
-			background-color: white;
-			overflow-y: auto;
-			* {
-				line-height: 20px;
-				font-size: 14px;
-				font-family: Monaco, source-code-pro, Menlo, Consolas, 'Courier New', monospace;
-			}
-			.lnarea {
-				position: relative;
-				width: 36px;
-				pointer-events: none;
-				.index {
-					border-right: royalblue 2px solid;
-					padding-right: 4px;
-					text-align: right;
-				}
-			}
-			.codearea {
-				position: relative;
-				width: calc(100% - 36px);
-				@keyframes flash {
-					0%, 45%, 100% {
-						opacity: 1;
-					}
-					50%, 95% {
-						opacity: 0;
-					}
-				}
-				.pointer {
-					position: absolute;
-					width: 2px;
-					height: 20px;
-					background-color: hsla(0, 0, 40%, 0.8);
-					animation: 1s linear 0s infinite;
-					pointer-events: none;
-				}
-				.codeline {
-					flex-grow: 1;
-					text-align: left;
-					white-space: nowrap;
-					.content {
-						display: inline-block;
-						padding-left: 4px;
-						.char {
-							display: inline-block;
-							width: 9px;
-						}
-					}
-				}
-			}	
+		overflow: auto;
+		* {
+			line-height: 20px;
+			font-size: 14px;
+			font-family: Monaco, source-code-pro, Menlo, Consolas, 'Courier New', monospace;
 		}
-		.opmask {
+		.lnarea {
+			position: absolute;
+			width: 36px;
+			pointer-events: none;
+			.index {
+				border-right: royalblue 2px solid;
+				padding-right: 4px;
+				text-align: right;
+			}
+		}
+		.codearea {
 			position: absolute;
 			left: 36px;
 			top: 0;
-			// right: 0;
-			width: calc(100% - 42px);
-			bottom: 0;
-			background-color: rgba(127,0,0,0.3);
-			outline: none;
-			cursor: text;
-			opacity: 0.1;
+			width: calc(100% - 36px);
+			min-height: 100%;
+			overflow-x: auto;
+			@keyframes flash {
+				0%, 45%, 100% {
+					opacity: 1;
+				}
+				50%, 95% {
+					opacity: 0;
+				}
+			}
+			.opmask {
+				position: absolute;
+				left: 0;
+				top: 0;
+				right: 0;
+				bottom: 0;
+				min-width: 100%;
+				background-color: rgba(127,0,0,0.3);
+				outline: none;
+				cursor: text;
+				opacity: 0.1;
+			}
+			.pointer {
+				position: absolute;
+				width: 2px;
+				height: 20px;
+				background-color: hsla(0, 0, 40%, 0.8);
+				animation: 1s linear 0s infinite;
+				pointer-events: none;
+			}
+			.codeline {
+				flex-grow: 1;
+				text-align: left;
+				white-space: nowrap;
+				.content {
+					display: inline-block;
+					padding-left: 4px;
+					.char {
+						display: inline-block;
+						width: 9px;
+					}
+				}
+			}
 		}
-	}
-	.dragger {
-		position: absolute;
-		left: -16px;
-		top: calc(50% - 16px);
-		width: 32px;
-		height: 32px;
-		border-radius: 50%;
-		background-color: white;
-		box-shadow: 0px 2px 6px rgba(0,0,0,0.5);
-		cursor: w-resize;
 	}
 }
