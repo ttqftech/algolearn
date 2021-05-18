@@ -135,7 +135,7 @@ export class CodeService extends EventEmitter {
 		let originCodeLine = this.codeLines[ln];
 		let newCodeLines: Array<CodeLine> = content.split('\n').map((str) => this.stringToCodeChar(str + '\n'));
 		newCodeLines[0].unshift(...originCodeLine.slice(0, col));
-		newCodeLines[newCodeLines.length - 1].splice(-1, 0 ,...originCodeLine.slice(col));
+		newCodeLines[newCodeLines.length - 1].splice(-1, 1, ...originCodeLine.slice(col));
 		this.codeLines.splice(ln, 1, ...newCodeLines);
 		this.emit(CodeServiceEvent.CodeUpdated);
 		if (newCodeLines.length === 1) {
@@ -316,11 +316,16 @@ export class CodeService extends EventEmitter {
 			
 			startTime = new Date().getTime();
 			let grammarNode = this.grammarAnalyzer.grammarAnalyze(tokenList);
-			console.log('nodeTree', grammarNode, `语法分析耗时：${new Date().getTime() - startTime} ms`);
+			console.log('nodeTree', grammarNode, `语法分析耗时：${new Date().getTime() - startTime} ms。节点数：${this.grammarAnalyzer.getNodeCount()}`);
 
-			startTime = new Date().getTime();
-			let programNode = this.grammarAnalyzer.semanticAnalyze();
-			console.log('programNode', programNode, `变量表分析耗时：${new Date().getTime() - startTime} ms`);
+			if (grammarNode.symbol !== 'program') {
+				// 语法错误，同时也可用 this.grammarAnalyzer.getSyntaxError 代替
+				console.error('语法错误', this.grammarAnalyzer.getSyntaxError());
+			} else {
+				startTime = new Date().getTime();
+				let programNode = this.grammarAnalyzer.semanticAnalyze();
+				console.log('programNode', programNode, `变量表分析耗时：${new Date().getTime() - startTime} ms`);
+			}
 
 			this.emit(CodeServiceEvent.LexicalReady);
 		}, 300);

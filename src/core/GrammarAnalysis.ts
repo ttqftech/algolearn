@@ -117,11 +117,27 @@ function convertTokenType2LRtitle(tokenType: TokenType): string {
 
 export class GrammarAnalysis {
 	private syntaxTree?: SyntaxNode
+	private syntaxError: Token | undefined;		// 如果语法错误，此处记录最后一次移进符，否则为 undefined
+	private nodeCount: number = 0;
 
 	constructor() {
 		console.log('LR', LR);
 		console.log('hash', hash);
 		console.log('productions', productions);
+	}
+
+	/**
+	 * 如果语法错误，获取最后一次移进符，否则返回 undefined
+	 */
+	public getSyntaxError(): Token | undefined {
+		return this.syntaxError;
+	}
+
+	/**
+	 * 获取节点树中的节点数
+	 */
+	public getNodeCount(): number {
+		return this.nodeCount;
 	}
 
 	/**
@@ -131,6 +147,8 @@ export class GrammarAnalysis {
 		let stackStatus: Array<number> = [];	// 状态栈
 		let stackNode: Array<SyntaxNode> = [];	// 符号栈
 		let tokenIndex = 0;						// 输入“栈”
+		let lastToken: Token | undefined;		// 最后一次正常的移进符
+		let nodeCount: number = 0;
 
 		stackStatus.push(0);	// 初始状态
 		stackNode.push({
@@ -141,20 +159,27 @@ export class GrammarAnalysis {
 			let topStatus = stackStatus[stackStatus.length - 1];
 			let input = convertTokenType2LRtitle(tokenList[tokenIndex].type);
 			let action = LR[topStatus][hash.get(input)!];
-			if (action === "acc") {			// 如果是 acc 表示结束
+			if (!action || action === 'err') {
+				// !action: LR 表中没有对应的转换，一般是程序结束后后面还有代码所致
+				// action === 'err': 语法分析错误
+				this.syntaxError = lastToken;				// 记录最后一次正常的移进符
+				this.syntaxTree = stackNode[stackNode.length - 1];
+				this.nodeCount = nodeCount;
+				return this.syntaxTree;						// 返回非根节点
+			} else if (action === "acc") {	// 如果是 acc 表示结束
 				break;
-			} else if (action === 'err') {
-				throw new Error("语法分析错误");
 			} else if (action[0] === 's') {	// 如果 action 第一个字符为 s，表示移进
 				action = action.slice(1);					// 删掉“s”
 				stackStatus.push(parseInt(action));			// 状态栈进栈
 				let node: SyntaxNode = {
 					symbol: input
 				};
+				nodeCount++;
 				if (input === 'ID' || input === "NUM") {
 					node.value = tokenList[tokenIndex].value;
 				}
 				stackNode.push(node);						// 符号栈进栈
+				lastToken = tokenList[tokenIndex];			// 记录最后一次正常的移进符
 				tokenIndex++;								// 输入栈出栈
 			} else {						// 归约
 				action = action.slice(1);					// 删掉“s”
@@ -164,6 +189,7 @@ export class GrammarAnalysis {
 					symbol: prod.NT,
 					children: [],
 				};
+				nodeCount++;
 				while (len--) {
 					stackStatus.pop();						// 状态栈出栈
 					node.children!.unshift(stackNode.pop()!);	// 符号栈出栈，丢出来的东西作为父节点的孩子
@@ -174,7 +200,9 @@ export class GrammarAnalysis {
 				stackStatus.push(newStatus);
 			}
 		}
+		this.syntaxError = undefined;
 		this.syntaxTree = stackNode[stackNode.length - 1];
+		this.nodeCount = nodeCount;
 		return this.syntaxTree;		// 返回根节点
 	}
 
@@ -243,44 +271,6 @@ export class GrammarAnalysis {
 			collectFunctionVariable(variable_definition_list, functionNode);
 		}
 
-		/*		
-		function DFA(node: SyntaxNode, thing?: any): SyntaxNode {
-			let continueDFA: Boolean = true;
-			if (node.symbol === 'function_definition') {
-				continueDFA = function_definition(node);
-			} else if (node.symbol === 'variable_definition') {
-				continueDFA = variable_definition(node, thing);
-			}
-			// DFA 函数的作用是从某个节点开始往下挖，直到挖到需要的东西，然后继续分析
-			// 后续分析时可能需要带上不同的 thing，用于构建 ProgramNode，因此在某个节点停下就可以了
-			if (continueDFA && node.children) {
-				for (const child of node.children) {
-					DFA(child, thing);
-				}
-			}
-			return node;	// 返回停留在的节点
-		}
-		
-		function function_definition(node: SyntaxNode): boolean {
-			let newFunc: FunctionNode = {
-				returnType: getVariableTypeBySyntaxNode(node.children![0]),
-				name: '',
-				parameterList: [],
-				variableList: [],
-				statementNode: node,
-			}
-			programNode.functionList.push(newFunc);
-			DFA(node.children![3], newFunc.variableList);	// 让 DFA 去找 variable_definition
-
-			return false;
-		}
-
-		function variable_definition(node: SyntaxNode, thing: Array<VariableType>) {
-			thing.push(getVariableTypeBySyntaxNode(node));
-			return true;
-		}
-		DFA(syntaxTree!);	// 让 DFA 去找 function_definition
-		*/
 		return programNode;
 	}
 }

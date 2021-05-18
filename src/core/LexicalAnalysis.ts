@@ -772,8 +772,8 @@ export class LexicalAnalysis {
 				break;
 			}
 		}
-		// 如果 tokenList 不为空，且最后没有 eof，那么插入 eof
-		if (tokenList.length && tokenList[tokenList.length - 1].type !== TokenType.eof) {
+		// 如果 tokenList 最后没有 eof，那么插入 eof
+		if (!tokenList.length || (tokenList.length && tokenList[tokenList.length - 1].type !== TokenType.eof)) {
 			tokenList.push({
 				type: TokenType.eof,
 				value: undefined,

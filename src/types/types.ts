@@ -25,7 +25,8 @@ export interface CodeCharWrapper {
 export interface Token {
 	type: TokenType;
 	value: any;
-	firstCode?: CodeChar;	// token
+	firstCode?: CodeChar;	// 向下对应代码
+	// NT?: SyntaxNode;			// 向上对应
 }
 
 /**

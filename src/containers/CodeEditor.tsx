@@ -18,6 +18,7 @@ interface State {
 class CodeEditor extends React.Component<Props, State> {
 	private codeService: CodeService;
 	private pointerElemRef: HTMLDivElement | null;
+	private codeareaElemRef: HTMLDivElement | null;
 	private maskDragging: boolean = false;
 
 	constructor(props: Props | Readonly<Props>) {
@@ -34,6 +35,7 @@ class CodeEditor extends React.Component<Props, State> {
 		this.codeService = new CodeService();
 		(window as any).codeService = this.codeService;
 		this.pointerElemRef = null;
+		this.codeareaElemRef = null;
 		this.mountCodeServiceEvent();
 	}
 
@@ -200,11 +202,9 @@ class CodeEditor extends React.Component<Props, State> {
 	 * 响应左边栏的 DragStart 操作
 	 */
 	onLeftBarDragStart(event: any) {
-		event.preventDefault();//阻止触摸时浏览器的缩放、滚动条滚动 
+		event.preventDefault();	// 阻止触摸时浏览器的缩放、滚动条滚动 
 		let leftBarDragX = (event.nativeEvent as MouseEvent).offsetX;
-		console.log(leftBarDragX);
 		let moveListener = (ev: MouseEvent) => {
-			console.log(document.documentElement.clientWidth - ev.pageX + 0 * leftBarDragX);
 			this.setState({
 				width: document.documentElement.clientWidth - ev.pageX + leftBarDragX - 16
 			});
@@ -228,42 +228,44 @@ class CodeEditor extends React.Component<Props, State> {
 	render() {
 		return (
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
-				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
 				<div className="controller">
 					<button>开始</button>
 					<button>单步</button>
 					<button>停止</button>
 					<button>重启</button>
 				</div>
-				<div className="editor">
-					<div className="lnarea">
-						{this.codeService.getCodeLines().map((codeLine, ln) => {
-							return (
-								<div className="index" key={ln}>{ln + 1}</div>
-							)
-						})}
-					</div>
-					<div className="codearea">
-						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} />
-						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * 9 + 3}px`, top: `${this.state.pointerPos.ln * 20}px` }} ref={div => this.pointerElemRef = div} />
-						{this.codeService.getCodeLines().map((codeLine, ln) => {
-							return (
-								<div className="codeline" key={ln}>
-									<div className="content">
-										{/* {codeLine.code} */}
-										{codeLine.map((code, col) => {
-											let color: string;
-											color = this.codeService.getTokenColor(code.token.type);
-											return (
-												<div className="char" key={col} style={{ color: color }}>{code.char}</div>
-											)
-										})}
+				<div className="editor-wrapper">
+					<div className="editor">
+						<div className="lnarea">
+							{this.codeService.getCodeLines().map((codeLine, ln) => {
+								return (
+									<div className="index" key={ln}>{ln + 1}</div>
+								)
+							})}
+						</div>
+						<div className="codearea" ref={div => this.codeareaElemRef = div}>
+							<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * 9 + 3}px`, top: `${this.state.pointerPos.ln * 20}px` }} ref={div => this.pointerElemRef = div} />
+							{this.codeService.getCodeLines().map((codeLine, ln) => {
+								return (
+									<div className="codeline" key={ln}>
+										<div className="content">
+											{/* {codeLine.code} */}
+											{codeLine.map((code, col) => {
+												let color: string;
+												color = this.codeService.getTokenColor(code.token.type);
+												return (
+													<div className="char" key={col} style={{ color: color }}>{code.char}</div>
+												)
+											})}
+										</div>
 									</div>
-								</div>
-							)
-						})}
+								)
+							})}
+						</div>
 					</div>
+					<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} />
 				</div>
+				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
 			</div>
 		)
 	}
