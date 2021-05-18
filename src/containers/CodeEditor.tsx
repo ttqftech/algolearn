@@ -1,6 +1,7 @@
 import React from "react";
+import { findDOMNode } from "react-dom";
 import { CodeService, CodeServiceEvent } from "../core/CodeService";
-import { ChangedVariable, CodeCharWrapper, CodePosition, TokenType } from "../types/types";
+import { ChangedVariable, CodeCharWrapper, CodeLine, CodePosition, TokenType } from "../types/types";
 import './CodeEditor.scss'
 
 const CW = 9;		// 每字符宽度
@@ -46,6 +47,11 @@ class CodeEditor extends React.Component<Props, State> {
 		this.pointerElemRef = null;
 		this.codeareaElemRef = null;
 		this.mountCodeServiceEvent();
+	}
+
+	getSnapshotBeforeUpdate(prevProps: Props, prevState: State) {
+		console.log('update');
+		return 0;
 	}
 
 	/**
@@ -290,7 +296,6 @@ class CodeEditor extends React.Component<Props, State> {
 	render() {
 		return (
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
-				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
 				<div className="controller">
 					<button>开始</button>
 					<button>单步</button>
@@ -308,27 +313,126 @@ class CodeEditor extends React.Component<Props, State> {
 					<div className="codearea" ref={div => this.codeareaElemRef = div}>
 						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} style={{ width: this.state.codeareaSize.width }} />
 						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * CW + 3}px`, top: `${this.state.pointerPos.ln * CH}px` }} ref={div => this.pointerElemRef = div} />
-						{this.codeService.getCodeLines().map((codeLine, ln) => {
-							return (
-								<div className="codeline" key={ln}>
-									<div className="content">
-										{/* {codeLine.code} */}
-										{codeLine.map((code, col) => {
-											let color: string;
-											color = this.codeService.getTokenColor(code.token.type);
-											return (
-												<div className="char" key={col} style={{ color: color }}>{code.char}</div>
-											)
-										})}
-									</div>
-								</div>
-							)
-						})}
+						<CodeLinesComp codeService={this.codeService}></CodeLinesComp>
 					</div>
+				</div>
+				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
+			</div>
+		)
+	}
+}
+
+
+interface CodeLinesCompProps {
+	codeService: CodeService;
+}
+
+interface CodeLinesCompState {
+	lineCount: number;
+}
+
+class CodeLinesComp extends React.Component<CodeLinesCompProps, CodeLinesCompState> {
+
+	constructor (props: CodeLinesCompProps | Readonly<CodeLinesCompProps>) {
+		super(props);
+		this.setState({
+			lineCount: 0
+		});
+	}
+
+	getSnapshotBeforeUpdate(prevProps: CodeLinesCompProps, prevState: CodeLinesCompState) {
+		const I = findDOMNode(this)?.parentElement?.parentElement as HTMLElement;
+		if (I) {
+			return I.scrollHeight - I.scrollTop;
+		} else {
+			return null;
+		}
+	}
+
+	componentDidUpdate(prevProps: CodeLinesCompProps, prevState: CodeLinesCompState, snapshot: number | null) {
+		if (snapshot !== null) {
+			const I = findDOMNode(this)?.parentElement?.parentElement as HTMLElement;
+			if (I) {
+				I.scrollTop = I.scrollHeight - snapshot;
+			}
+		}
+	}
+	
+	// shouldComponentUpdate(nextProps: CodeLinesCompProps, nextState: CodeLinesCompState) {
+	// 	return true;
+	// 	let newLineCount = nextProps.codeService.getCodeLines().length;
+	// 	if (!nextState || newLineCount !== nextState.lineCount) {
+	// 		this.setState({
+	// 			lineCount: newLineCount
+	// 		});
+	// 		return true;
+	// 	} else {
+	// 		return false;
+	// 	}
+	// }
+
+	render () {
+		return (
+			<>
+				{this.props.codeService.getCodeLines().map((codeLine, ln) => {
+					return (
+						<CodeLineComp key={ln} codeLine={codeLine} codeService={this.props.codeService} ln={ln}></CodeLineComp>
+					)
+				})}
+			</>
+		)
+	}
+}
+
+
+interface CodeLineCompProps {
+	codeLine: CodeLine;
+	codeService: CodeService;
+	ln: number;
+}
+
+interface CodeLineCompState {
+	charCount: number;
+}
+
+class CodeLineComp extends React.Component<CodeLineCompProps, CodeLineCompState> {
+	constructor(props: CodeLineCompProps | Readonly<CodeLineCompProps>) {
+		super(props);
+		this.setState({
+			charCount: 0,
+		});
+	}	
+	
+	shouldComponentUpdate(nextProps: CodeLineCompProps, nextState: CodeLineCompState) {
+		return true;
+		let newCharCount = nextProps.codeLine.length;
+		if (!nextState || newCharCount !== nextState.charCount) {
+			this.setState({
+				charCount: newCharCount
+			});
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	render () {
+		return (
+			<div className="codeline">
+				<div className="content">
+					{/* {codeLine.code} */}
+					{this.props.codeLine.map((code, col) => {
+						let color: string;
+						color = this.props.codeService.getTokenColor(code.token.type);
+						return (
+							<div className="char" key={col} style={{ color: color }}>{code.char}</div>
+						)
+					})}
 				</div>
 			</div>
 		)
 	}
 }
+
 
 export default CodeEditor;
