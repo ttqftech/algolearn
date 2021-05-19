@@ -106,6 +106,8 @@ function getValueFromCodeString(code: string, tokenType: TokenType): any {
 		case TokenType.struct_point:
 		case TokenType.struct_arrow:
 			return undefined;
+		case 605:
+			return 0;
 		case TokenType.number_bin_int:
 			return parseInt(code, 2);
 		case TokenType.number_oct_int:
@@ -713,7 +715,7 @@ export class LexicalAnalysis {
 		let newToken: Token = {
 			type: TokenType.unknown,
 			value: undefined,
-			firstCode: c.code,
+			firstCode: c,
 		};
 		let valueString = '';
 		outer:
@@ -724,7 +726,7 @@ export class LexicalAnalysis {
 				// 状态机走到错误，将前面的内容识别为一个单词
 				// 然后检查上一个字符是不是终结状态。依此将整个单词的 TokenType 设为对应类型
 				// 此时 newToken 还存着上一次字符的引用，因此先把这个改好，再去新建 newToken
-				newToken.type = isTerminator(state) ? state : TokenType.error;
+				newToken.type = !isTerminator(state) ? TokenType.error : (state === 605 ? TokenType.number_dec_int : state);
 				newToken.value = getValueFromCodeString(valueString, state);
 				// 识别 identifier 是不是一个 keyword
 				if (newToken.type === TokenType.identifier) {
@@ -754,7 +756,7 @@ export class LexicalAnalysis {
 				newToken = {
 					type: TokenType.unknown,
 					value: undefined,
-					firstCode: c.code,
+					firstCode: c,
 				};
 				valueString = '';
 			} else {

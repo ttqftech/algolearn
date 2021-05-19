@@ -25,8 +25,8 @@ export interface CodeCharWrapper {
 export interface Token {
 	type: TokenType;
 	value: any;
-	firstCode?: CodeChar;	// 向下对应代码
-	// NT?: SyntaxNode;			// 向上对应
+	firstCode?: CodeCharWrapper;	// 向下对应代码
+	// T?: SyntaxNode;				// 向上对应文法终结符
 }
 
 /**
@@ -175,15 +175,17 @@ export interface Production {
  * 语法树节点
  */
 export interface SyntaxNode {
-	symbol: string;	// 终结/非终结符
-	value?: any;
+	symbol: string;					// 终结/非终结符
+	value?: any;					// 终结符在语法分析阶段获得值，非终结符在执行阶段获得值
+	executeIndex?: number;			// 对于拥有闭包的产生式，用于在执行阶段确定是执行自身还是执行闭包
+	parent?: SyntaxNode;
 	children?: Array<SyntaxNode>;	// 非终结符的子树
 }
 
 /**
  * 简化的语法树
  */
-export interface ProgramNode {
+export interface ProgramNode extends BaseNode {
 	functionList: Array<FunctionNode>;
 }
 
@@ -191,13 +193,20 @@ export interface ProgramNode {
  * 简化的语法树→函数节点
  * 理论上认为所有需要监听的变量都在这层，因此不往下探了
  */
-export interface FunctionNode {
-	// function_definition -> return_type function_name compound_statement
+export interface FunctionNode extends BaseNode {
 	returnType: VariableType,
 	name: string,
 	parameterList: Array<Variable>,
+}
+
+/**
+ * 基本节点，用于存储变量表及语法树中对应节点的引用。每遇到一次 compound_statement 就递归一层
+ */
+export interface BaseNode {
 	variableList: Array<Variable>,
-	statementNode: SyntaxNode,
+	syntaxNode: SyntaxNode,
+	parentNode?: BaseNode,
+	subNode?: BaseNode,		// 可以是任何东西，包括 FunctionNode
 }
 
 // #endregion

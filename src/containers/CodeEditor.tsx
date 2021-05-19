@@ -1,7 +1,8 @@
 import React from "react";
-import { findDOMNode } from "react-dom";
+// import { findDOMNode } from "react-dom";
 import { CodeService, CodeServiceEvent } from "../core/CodeService";
-import { ChangedVariable, CodeCharWrapper, CodeLine, CodePosition, TokenType } from "../types/types";
+import { ChangedVariable, CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
+import { getCharPosFromCodeChar, getWindowOffsetLeft, getWindowOffsetTop } from "../utils";
 import './CodeEditor.scss'
 
 const CW = 9;		// 每字符宽度
@@ -19,7 +20,16 @@ interface State {
 	codeareaSize: {
 		width: number;
 	}
-	runningLine: number;
+	syntaxError?: {
+		position: {
+			left: number,
+			top: number,
+			ln: number,
+			col: number,
+		};
+		message?: string;
+	}
+	runningLine?: number;
 }
 
 class CodeEditor extends React.Component<Props, State> {
@@ -49,9 +59,16 @@ class CodeEditor extends React.Component<Props, State> {
 		this.mountCodeServiceEvent();
 	}
 
-	getSnapshotBeforeUpdate(prevProps: Props, prevState: State) {
-		console.log('update');
-		return 0;
+	// getSnapshotBeforeUpdate(prevProps: Props, prevState: State) {
+	// 	console.log('update');
+	// 	return 0;
+	// }
+
+	/**
+	 * 重渲染时，自动将界面滚动到光标位置（不是好的解决方案，此处有设计缺陷）
+	 */
+	componentDidUpdate() {
+		this.scrollPointerIntoView(this.state.pointerPos);
 	}
 
 	/**
@@ -63,12 +80,45 @@ class CodeEditor extends React.Component<Props, State> {
 
 	mountCodeServiceEvent() {
 		this.codeService.on(CodeServiceEvent.CodeUpdated, () => {
-			// console.log('CodeUpdated');
-			this.refreshCodeareaSize();
-			// this.setState({});
+			// 代码更新，刷新显示
+			this.setState({});
 		})
 		this.codeService.on(CodeServiceEvent.LexicalReady, () => {
+			// 词法分析结束，刷新代码高亮
 			this.setState({});
+		})
+		this.codeService.on(CodeServiceEvent.GrammarReady, (errorToken: Token | undefined) => {
+			// 语法分析结束，如果有错误，那么 errorToken 指示错误位置，需要在界面上指示出来
+			if (errorToken) {
+				let codePosition;
+				// errorToken 有可能是 eof，因此进一步判断
+				if (errorToken.type !== TokenType.eof) {
+					codePosition = getCharPosFromCodeChar(errorToken.firstCode!);
+				} else {
+					codePosition = {
+						ln: this.codeService.getCodeLines().length,
+						col: 0
+					};
+				}
+				let editorPosition = {
+					left: getWindowOffsetLeft(this.codeareaElemRef!),
+					top: getWindowOffsetTop(this.codeareaElemRef!),
+				}
+				this.setState({
+					syntaxError: {
+						position: {
+							ln: codePosition.ln,
+							col: codePosition.col,
+							left: (codePosition.col + 0.5) * CW + editorPosition.left + 4,
+							top: (codePosition.ln + 1) * CH + editorPosition.top - 4,
+						}
+					}
+				});
+			} else {
+				this.setState({
+					syntaxError: undefined
+				});
+			}
 		})
 	}
 
@@ -85,11 +135,11 @@ class CodeEditor extends React.Component<Props, State> {
 			codeareaSize: {
 				width: longestCodeLine * CW,
 			}
-		})
+		});
 	}
 
 	/**
-	 * 每次移动光标都使光标进入画面
+	 * 每次移动光标都使光标进入画面（此处有设计缺陷，因为透明蒙层响应了输入之后就自动跳到焦点位置，因此需要在 nextTick 变更 scroll 位置，会造成性能损耗和画面抖动）
 	 */
 	scrollPointerIntoView(position: CodePosition): void {
 		let pointerLeft = position.col * CW;
@@ -146,7 +196,7 @@ class CodeEditor extends React.Component<Props, State> {
 			pointerPos: newPos
 		});
 		element.value = '';
-		this.scrollPointerIntoView(newPos);
+		// this.scrollPointerIntoView(newPos);
 	}
 
 	/**
@@ -226,9 +276,9 @@ class CodeEditor extends React.Component<Props, State> {
 		// 	default:
 		// 		break;
 		}
-		if (newChar) {
-			this.scrollPointerIntoView(newChar);
-		}
+		// if (newChar) {
+		// 	this.scrollPointerIntoView(newChar);
+		// }
 		this.restartPointerAnimation();
 	}
 
@@ -274,8 +324,27 @@ class CodeEditor extends React.Component<Props, State> {
 		let leftBarDragX = (event.nativeEvent as MouseEvent).offsetX;
 		let moveListener = (ev: MouseEvent) => {
 			this.setState({
-				width: document.documentElement.clientWidth - ev.pageX + leftBarDragX - 16
+				width: document.documentElement.clientWidth - ev.pageX + leftBarDragX - 16,
+	
 			});
+			// 语法错误指示器位置移动
+			if (this.state.syntaxError) {
+				let editorPosition = {
+					left: getWindowOffsetLeft(this.codeareaElemRef!),
+					top: getWindowOffsetTop(this.codeareaElemRef!),
+				};
+				let syntaxErrorPosition = this.state.syntaxError.position;
+				this.setState({
+					syntaxError: {
+						...this.state.syntaxError,
+						position: {
+							...syntaxErrorPosition,
+							left: (syntaxErrorPosition.col + 0.5) * CW + editorPosition.left + 4,
+							top: (syntaxErrorPosition.ln + 1) * CH + editorPosition.top - 4,
+						}
+					}
+				});
+			}
 		};
 		let upListener = (ev: MouseEvent) => {
 			document.body.removeEventListener('mousemove', moveListener);
@@ -285,7 +354,9 @@ class CodeEditor extends React.Component<Props, State> {
 		document.body.addEventListener('mouseup', upListener);
 	}
 
-	// 使光标重新闪烁
+	/**
+	 * 使光标重新闪烁
+	 */
 	restartPointerAnimation(): void {
 		this.pointerElemRef?.style.setProperty('animation-name', '')
 		window.requestAnimationFrame(() => {
@@ -313,6 +384,12 @@ class CodeEditor extends React.Component<Props, State> {
 					<div className="codearea" ref={div => this.codeareaElemRef = div}>
 						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} style={{ width: this.state.codeareaSize.width }} />
 						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * CW + 3}px`, top: `${this.state.pointerPos.ln * CH}px` }} ref={div => this.pointerElemRef = div} />
+						{this.state.syntaxError ? (
+							<div className="syntaxerror" style={{ left: this.state.syntaxError.position.left, top: this.state.syntaxError.position.top }}>
+								<div className="triangle"></div>
+								<div className="message">语法错误</div>
+							</div>
+						) : null}
 						<CodeLinesComp codeService={this.codeService}></CodeLinesComp>
 					</div>
 				</div>
@@ -340,23 +417,23 @@ class CodeLinesComp extends React.Component<CodeLinesCompProps, CodeLinesCompSta
 		});
 	}
 
-	getSnapshotBeforeUpdate(prevProps: CodeLinesCompProps, prevState: CodeLinesCompState) {
-		const I = findDOMNode(this)?.parentElement?.parentElement as HTMLElement;
-		if (I) {
-			return I.scrollHeight - I.scrollTop;
-		} else {
-			return null;
-		}
-	}
+	// getSnapshotBeforeUpdate(prevProps: CodeLinesCompProps, prevState: CodeLinesCompState) {
+	// 	const I = findDOMNode(this)?.parentElement?.parentElement as HTMLElement;
+	// 	if (I) {
+	// 		return I.scrollTop;
+	// 	} else {
+	// 		return null;
+	// 	}
+	// }
 
-	componentDidUpdate(prevProps: CodeLinesCompProps, prevState: CodeLinesCompState, snapshot: number | null) {
-		if (snapshot !== null) {
-			const I = findDOMNode(this)?.parentElement?.parentElement as HTMLElement;
-			if (I) {
-				I.scrollTop = I.scrollHeight - snapshot;
-			}
-		}
-	}
+	// componentDidUpdate(prevProps: CodeLinesCompProps, prevState: CodeLinesCompState, snapshot: number | null) {
+	// 	if (snapshot !== null) {
+	// 		const I = findDOMNode(this)?.parentElement?.parentElement as HTMLElement;
+	// 		if (I) {
+	// 			// I.scrollTop = snapshot;
+	// 		}
+	// 	}
+	// }
 	
 	// shouldComponentUpdate(nextProps: CodeLinesCompProps, nextState: CodeLinesCompState) {
 	// 	return true;
@@ -403,18 +480,18 @@ class CodeLineComp extends React.Component<CodeLineCompProps, CodeLineCompState>
 		});
 	}	
 	
-	shouldComponentUpdate(nextProps: CodeLineCompProps, nextState: CodeLineCompState) {
-		return true;
-		let newCharCount = nextProps.codeLine.length;
-		if (!nextState || newCharCount !== nextState.charCount) {
-			this.setState({
-				charCount: newCharCount
-			});
-			return true;
-		} else {
-			return false;
-		}
-	}
+	// shouldComponentUpdate(nextProps: CodeLineCompProps, nextState: CodeLineCompState) {
+	// 	return true;
+	// 	let newCharCount = nextProps.codeLine.length;
+	// 	if (!nextState || newCharCount !== nextState.charCount) {
+	// 		this.setState({
+	// 			charCount: newCharCount
+	// 		});
+	// 		return true;
+	// 	} else {
+	// 		return false;
+	// 	}
+	// }
 
 	render () {
 		return (
@@ -423,7 +500,7 @@ class CodeLineComp extends React.Component<CodeLineCompProps, CodeLineCompState>
 					{/* {codeLine.code} */}
 					{this.props.codeLine.map((code, col) => {
 						let color: string;
-						color = this.props.codeService.getTokenColor(code.token.type);
+						color = getTokenColor(code.token.type);
 						return (
 							<div className="char" key={col} style={{ color: color }}>{code.char}</div>
 						)
@@ -436,3 +513,114 @@ class CodeLineComp extends React.Component<CodeLineCompProps, CodeLineCompState>
 
 
 export default CodeEditor;
+
+function getTokenColor(tokenType: TokenType): string {
+	switch (tokenType) {
+		case TokenType.error:
+			return '#FF0000'
+		case TokenType.unknown:
+			return '#000000';
+		case TokenType.preprocess:
+			return '#FF0000';		// 暂不支持
+		case TokenType.comma:
+		case TokenType.semicon:
+			return '#666666';
+		case TokenType.brakets_round_left:
+		case TokenType.brakets_round_right:
+		case TokenType.brakets_square_left:
+		case TokenType.brakets_square_right:
+		case TokenType.brakets_curly_left:
+		case TokenType.brakets_curly_right:
+			return '#222A44';
+		case TokenType.compare_equal:
+		case TokenType.compare_unequal:
+		case TokenType.compare_less:
+		case TokenType.compare_less_equal:
+		case TokenType.compare_great:
+		case TokenType.compare_great_equal:
+			return '#882222';
+		case TokenType.compare_colon:
+		case TokenType.compare_question:
+			return '#FF0000';		// 暂不支持
+		case TokenType.bit_logic_and:
+		case TokenType.bit_logic_or:
+		case TokenType.bit_and:
+		case TokenType.bit_and_assign:
+		case TokenType.bit_or:
+		case TokenType.bit_or_assign:
+		case TokenType.bit_negation:
+		case TokenType.bit_negation_assign:
+		case TokenType.bit_xor:
+		case TokenType.bit_xor_assign:
+		case TokenType.bit_move_left:
+		case TokenType.bit_move_left_assign:
+		case TokenType.bit_move_right:
+		case TokenType.bit_move_right_assign:
+			return '#FF0000';		// 暂不支持
+		case TokenType.calc_assign:
+			return '#BBAA33';
+		case TokenType.calc_negation:
+		case TokenType.calc_mod:
+		case TokenType.calc_mod_assign:
+			return '#FF0000';		// 暂不支持
+		case TokenType.calc_multiply:
+			return '#AABB33'			
+		case TokenType.calc_multiply_assign:
+			return '#FF0000';		// 暂不支持
+		case TokenType.calc_devide:
+			return '#AABB33'
+		case TokenType.calc_devide_assign:
+			return '#FF0000';		// 暂不支持
+		case TokenType.calc_add:
+			return '#AABB33'
+		case TokenType.calc_add_assign:
+		case TokenType.calc_add_self:
+			return '#FF0000';		// 暂不支持
+		case TokenType.calc_minus:
+			return '#AABB33'
+		case TokenType.calc_minus_assign:
+		case TokenType.calc_minus_self:
+			return '#FF0000';		// 暂不支持
+		case TokenType.struct_point:
+		case TokenType.struct_arrow:
+			return '#FF0000';		// 暂不支持
+		case TokenType.number_bin_int:
+		case TokenType.number_bin_float:
+		case TokenType.number_bin_float_e:
+		case TokenType.number_oct_int:
+		case TokenType.number_oct_float:
+		case TokenType.number_oct_float_e:
+		case TokenType.number_dec_int:
+		case TokenType.number_dec_float:
+		case TokenType.number_dec_float_e:
+		case TokenType.number_hex_int:
+		case TokenType.number_hex_float:
+		case TokenType.number_hex_float_e:
+			return '#22AA66';
+		case TokenType.char_char:
+		case TokenType.char_string:
+			return '#FF0000';		// 暂不支持
+		case TokenType.bool_true:
+		case TokenType.bool_false:
+			return '#22AA66';
+		case TokenType.note_singleline:
+		case TokenType.note_multiline:
+			return '#22AA22';
+		case TokenType.identifier:
+			return '#990099';
+		case TokenType.keyword_void:
+		case TokenType.keyword_short:
+		case TokenType.keyword_int:
+		case TokenType.keyword_long:
+		case TokenType.keyword_float:
+		case TokenType.keyword_double:
+			return '#2277CC';
+		case TokenType.keyword_while:
+		case TokenType.keyword_if:
+		case TokenType.keyword_else:
+		case TokenType.keyword_return:
+			return '#0000BB';
+		default:
+			return '#FF0000';
+	}
+}
