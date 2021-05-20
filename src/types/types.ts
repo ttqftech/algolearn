@@ -177,7 +177,7 @@ export interface Production {
 export interface SyntaxNode {
 	symbol: string;					// 终结/非终结符
 	value?: any;					// 终结符在语法分析阶段获得值，非终结符在执行阶段获得值
-	executeIndex?: number;			// 对于拥有闭包的产生式，用于在执行阶段确定是执行自身还是执行闭包
+	executeIndex?: number;			// 解释执行的过程中节点会被反复访问，每次访问的操作由访问次数决定
 	parent?: SyntaxNode;
 	children?: Array<SyntaxNode>;	// 非终结符的子树
 }

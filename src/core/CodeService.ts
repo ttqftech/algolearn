@@ -40,6 +40,31 @@ const endlineChar: CodeChar = {
 	}
 }
 
+/**
+ * 将新插入的字符串转换成 Array<CodeChar>
+ */
+function stringToCodeChar(str: string): Array<CodeChar> {
+	let ret: Array<CodeChar> = [];
+	for (const char of str.split('')) {
+		ret.push({
+			char,
+			token: nullToken,
+		});
+	}
+	return ret;
+}
+
+/**
+ * 将存储的 CodeChar 转换成 string
+ */
+// function codeCharToString(arr: Array<CodeChar>): string {
+// 	let ret: string = '';
+// 	for (const codeChar of arr) {
+// 		ret += codeChar.char;
+// 	}
+// 	return ret;
+// }
+
 export class CodeService extends EventEmitter {
 	private codeLines: Array<CodeLine>;
 	private lexicalAnalyzer: LexicalAnalysis;
@@ -61,7 +86,7 @@ export class CodeService extends EventEmitter {
 		});
 		this.grammarAnalyzer = new GrammarAnalysis();
 		this.on(CodeServiceEvent.CodeUpdated, () => {
-			this.ScanCode();
+			this.compile();
 		});
 		this.grammarAnalyzer = new GrammarAnalysis();
 	}
@@ -73,7 +98,7 @@ export class CodeService extends EventEmitter {
 	/**
 	 * 获取单个代码行的内容
 	 */
-	 public getCodeLine(ln: number): CodeLine {
+	public getCodeLine(ln: number): CodeLine {
 		return this.codeLines[ln];
 	}
 
@@ -86,31 +111,6 @@ export class CodeService extends EventEmitter {
 			for (const codeChar of codeLine) {
 				ret += codeChar.char;
 			}
-		}
-		return ret;
-	}
-
-	/**
-	 * 将新插入的字符串转换成 Array<CodeChar>
-	 */
-	public stringToCodeChar(str: string): Array<CodeChar> {
-		let ret: Array<CodeChar> = [];
-		for (const char of str.split('')) {
-			ret.push({
-				char,
-				token: nullToken,
-			});
-		}
-		return ret;
-	}
-
-	/**
-	 * 将存储的 CodeChar 转换成 string
-	 */
-	public codeCharToString(arr: Array<CodeChar>): string {
-		let ret: string = '';
-		for (const codeChar of arr) {
-			ret += codeChar.char;
 		}
 		return ret;
 	}
@@ -137,7 +137,7 @@ export class CodeService extends EventEmitter {
 		content = content.replace(/\r/g, '\n');
 		// 插入操作
 		let originCodeLine = this.codeLines[ln];
-		let newCodeLines: Array<CodeLine> = content.split('\n').map((str) => this.stringToCodeChar(str + '\n'));
+		let newCodeLines: Array<CodeLine> = content.split('\n').map((str) => stringToCodeChar(str + '\n'));
 		newCodeLines[0].unshift(...originCodeLine.slice(0, col));
 		newCodeLines[newCodeLines.length - 1].splice(-1, 1, ...originCodeLine.slice(col));
 		this.codeLines.splice(ln, 1, ...newCodeLines);
@@ -302,7 +302,7 @@ export class CodeService extends EventEmitter {
 	/**
 	 * 编译
 	 */
-	public ScanCode(): void {
+	public compile(): void {
 		clearInterval(this.antishakeTimer);
 		this.antishakeTimer = setTimeout(() => {
 			let startTime: number;
@@ -346,7 +346,7 @@ export class CodeService extends EventEmitter {
 	/**
 	 * 单步执行
 	 */
-	public step() {
+	public step(): void {
 		let syntaxNode = this.currentSyntaxNode;
 		let baseNode = this.currentBaseNode;
 		let stopflag: boolean = false;

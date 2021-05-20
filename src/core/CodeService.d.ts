@@ -1,14 +1,19 @@
-import { CodeChar, CodeLine, CodePosition, Token, TokenType } from "../types/types";
+import { CodeChar, CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
 
 export interface CodeService {
     getCodeLines(): Array<CodeLine>
-    getAllCode(): string
     getCodeLine(ln: number): CodeLine
-    setCodeLineByString(ln: number, code: string): void
+    getAllCode(): string
+    resetCode(content: string): void
     insertCode(content: string, ln: number, col: number): CodePosition
-    readCharAt_s(ln: number, col: number): CodeChar
-    readCharAt(ln: number, col: number): CodeChar
-    readNextChar(ln: number, col: number): CodeChar
-    readPrevChar(ln: number, col: number): CodeChar
+    deletePrevChar(ln: number, col: number): CodePosition
+    deleteNextChar(ln: number, col: number): CodePosition
+    deleteCodeLine(ln: number, col: number): CodeCharWrapper
+    readCharAt_s(ln: number, col: number): CodeCharWrapper
+    readCharAt(ln: number, col: number): CodeCharWrapper
+    readNextChar(ln: number, col: number): CodeCharWrapper
+    readPrevChar(ln: number, col: number): CodeCharWrapper
     getCodeToken(ln: number, col: number): Token
+    compile(): void
+    step(): void
 }
