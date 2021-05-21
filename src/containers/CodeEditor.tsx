@@ -368,9 +368,7 @@ class CodeEditor extends React.Component<Props, State> {
 		return (
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
 				<div className="controller">
-					<button>开始</button>
 					<button>单步</button>
-					<button>停止</button>
 					<button>重启</button>
 				</div>
 				<div className="editor">

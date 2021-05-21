@@ -6,7 +6,7 @@ import BubbleSort from './BubbleSort';
 
 const courseMenu: Array<ChapterInfo> = [
 	{
-		title: '第一章　排序（示例）',
+		title: '第一章　排序',
 		sections: [
 			{
 				title: '1.1 桶排序',
@@ -20,19 +20,30 @@ const courseMenu: Array<ChapterInfo> = [
 				title: '1.3 冒泡排序',
 				course: BubbleSort,
 			},
+			{
+				title: '1.4 快速排序',
+				course: BubbleSort,
+			},
 		]
 	},
 	{
-		title: '第二章　其他（示例）',
+		title: '第二章　枚举',
 		sections: [
-			{
-				title: '2.1 桶排序',
-				course: BucketSort,
-			},
-			{
-				title: '2.2 冒泡排序',
-				course: BubbleSort,
-			},
+		]
+	},
+	{
+		title: '第三章　搜索',
+		sections: [
+		]
+	},
+	{
+		title: '第四章　贪心',
+		sections: [
+		]
+	},
+	{
+		title: '第五章　动态规划',
+		sections: [
 		]
 	},
 ];

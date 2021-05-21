@@ -96,9 +96,11 @@ class CourseMenu extends React.Component<Props, State> {
 						)
 					})}
 				</div>
-				<div className="dragger" onMouseDown={this.onRightBarDragStart.bind(this)}>
-					<div className="draggerimg"></div>
-				</div>
+				{this.props.courseIndex && (
+					<div className="dragger" onMouseDown={this.onRightBarDragStart.bind(this)}>
+						<div className="draggerimg"></div>
+					</div>
+				)}
 			</div>
 		);
 	}
