@@ -454,6 +454,7 @@ export class CodeService extends EventEmitter {
 			} else {
 				this.currentSyntaxNode = syntaxNode.parent;
 			}
+			stopflag = true;
 		} else if (syntaxNode.symbol === 'selection_statement') {
 			if (!syntaxNode.executeIndex) {
 				this.currentSyntaxNode = syntaxNode.children![2];		// 计算表达式
@@ -467,6 +468,7 @@ export class CodeService extends EventEmitter {
 			} else {
 				this.currentSyntaxNode = syntaxNode.parent;
 			}
+			stopflag = true;
 		} else if (syntaxNode.symbol === 'iteration_statement') {
 			if (!syntaxNode.executeIndex) {
 				this.currentSyntaxNode = syntaxNode.children![2];		// 计算表达式
@@ -478,6 +480,7 @@ export class CodeService extends EventEmitter {
 			} else {
 				this.currentSyntaxNode = syntaxNode.parent;
 			}
+			stopflag = true;
 		} else if (syntaxNode.symbol === 'jump_statement') {
 			if (!syntaxNode.executeIndex) {
 				if (syntaxNode.children!.length === 2) {
@@ -506,6 +509,7 @@ export class CodeService extends EventEmitter {
 					console.log('程序运行完毕');
 				}
 			}
+			stopflag = true;
 		} else if (syntaxNode.symbol === 'expression') {
 			if (!syntaxNode.executeIndex) {
 				this.currentSyntaxNode = syntaxNode.children![0];
@@ -519,19 +523,32 @@ export class CodeService extends EventEmitter {
 			if (!syntaxNode.executeIndex) {
 				// 先计算，算完了才赋值
 				if (syntaxNode.children!.length === 3) {
-					// 基本变量赋值
+					// 基本变量
 					this.currentSyntaxNode = syntaxNode.children![2];
 				} else {
-					// 数组赋值
+					// 数组
 					this.currentSyntaxNode = syntaxNode.children![3];
 				}
 			} else {
 				// 赋值
+				let id = syntaxNode.children![0];
+				let varTableNode: BaseNode | undefined;
+				varTableNode = baseNode;
+				while (varTableNode && !varTableNode.variableList.find((variable) => variable.name === id.value)) {
+					varTableNode = varTableNode.parentNode;
+				}
+				if (varTableNode) {
+					// let objectVar = varTableNode.variableList.find((variable) => variable.name === id.value);
+
+				} else {
+					this.runtimeError(syntaxNode.token, `找不到标识符 ${id.value}`)
+				}
 				
 				
 				this.currentSyntaxNode = syntaxNode.parent;
 				this.currentSyntaxNode!.value = syntaxNode.value;
 			}
+			
 		} else if (syntaxNode.symbol === 'compound_statement') {
 		} else if (syntaxNode.symbol === 'compound_statement') {
 		} else if (syntaxNode.symbol === 'compound_statement') {
@@ -548,5 +565,10 @@ export class CodeService extends EventEmitter {
 		if (!stopflag) {
 			this.step();
 		}
+	}
+
+	private runtimeError(errToken: Token | undefined, message?: string): void {
+		console.error('运行时错误', errToken, message);
+		this.emit(CodeServiceEvent.GrammarReady, errToken, message);
 	}
 }

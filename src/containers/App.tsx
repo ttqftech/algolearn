@@ -1,6 +1,6 @@
 import React from 'react';
 import logo from '../others/logo.svg';
-import { ChangedVariable, CourseIndex } from '../types/types';
+import { CourseIndex } from '../types/types';
 import CourseMenu from './CourseMenu';
 
 import { getCourseByChapterIndex, getCourseElemByChapterIndex } from "../courses/CourseLoader";
@@ -60,17 +60,6 @@ class App extends React.Component<{}, State> {
 		});
 	}
 
-	// handleClick() {
-	// 	console.log(this.state.courseRef!.getBaseCode());
-	// }
-
-	/**
-	 * 代码编辑器变量发生变化时被调用，将其传至课程
-	 */
-	handleValueChanged<T>(changedVariable: ChangedVariable<T>): void {
-		this.state.courseRef!.onVariableChanged(changedVariable);
-	}
-
 	render () {
 		let SelectedCourse: React.CElement<{}, React.Component<{}, any, any>>;
 		SelectedCourse = getCourseElemByChapterIndex(this.state.courseIndex, {
@@ -98,7 +87,6 @@ class App extends React.Component<{}, State> {
 							</div>
 							{/* <button onClick={this.handleClick.bind(this)}></button> */}
 							<CodeEditor
-								onVariableChanged={this.handleValueChanged.bind(this)}
 								onRef={this.bindCodeEditorRef.bind(this)}
 							></CodeEditor>
 						</>

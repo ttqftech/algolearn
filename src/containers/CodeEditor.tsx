@@ -1,16 +1,15 @@
 import React from "react";
 // import { findDOMNode } from "react-dom";
 import { CodeService, CodeServiceEvent } from "../core/CodeService";
-import { ChangedVariable, CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
+import { CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
 import { getCharPosFromCodeChar, getWindowOffsetLeft, getWindowOffsetTop } from "../utils";
 import './CodeEditor.scss'
 
-const CW = 9;		// 每字符宽度
+const CW = 8;		// 每字符宽度
 const CH = 20;		// 每行高度
 
 interface Props {
 	onRef: (_this: CodeEditor) => void;
-	onVariableChanged<T>(changedVariable: ChangedVariable<T>): void;	// 变量发生变化时由父组件调用
 }
 
 interface State {
@@ -41,7 +40,7 @@ class CodeEditor extends React.Component<Props, State> {
 	constructor(props: Props | Readonly<Props>) {
 		super(props);
 		this.state = {
-            width: 360,
+            width: 480,
 			pointerPos: {
 				ln: 0,
 				col: 0,
@@ -87,7 +86,7 @@ class CodeEditor extends React.Component<Props, State> {
 			// 词法分析结束，刷新代码高亮
 			this.setState({});
 		})
-		this.codeService.on(CodeServiceEvent.GrammarReady, (errorToken: Token | undefined) => {
+		this.codeService.on(CodeServiceEvent.GrammarReady, (errorToken: Token | undefined, message?: string) => {
 			// 语法分析结束，如果有错误，那么 errorToken 指示错误位置，需要在界面上指示出来
 			if (errorToken) {
 				let codePosition;
@@ -111,7 +110,8 @@ class CodeEditor extends React.Component<Props, State> {
 							col: codePosition.col,
 							left: (codePosition.col + 0.5) * CW + editorPosition.left + 4,
 							top: (codePosition.ln + 1) * CH + editorPosition.top - 4,
-						}
+						},
+						message: '语法错误',
 					}
 				});
 			} else {
@@ -387,13 +387,15 @@ class CodeEditor extends React.Component<Props, State> {
 						{this.state.syntaxError ? (
 							<div className="syntaxerror" style={{ left: this.state.syntaxError.position.left, top: this.state.syntaxError.position.top }}>
 								<div className="triangle"></div>
-								<div className="message">语法错误</div>
+								<div className="message">{this.state.syntaxError.message}</div>
 							</div>
 						) : null}
 						<CodeLinesComp codeService={this.codeService}></CodeLinesComp>
 					</div>
 				</div>
-				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}></div>
+				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}>
+					<div className="draggerimg"></div>
+				</div>
 			</div>
 		)
 	}

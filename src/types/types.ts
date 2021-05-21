@@ -180,6 +180,7 @@ export interface SyntaxNode {
 	executeIndex?: number;			// 解释执行的过程中节点会被反复访问，每次访问的操作由访问次数决定
 	parent?: SyntaxNode;
 	children?: Array<SyntaxNode>;	// 非终结符的子树
+	token?: Token;					// 向下对应词法单元
 }
 
 /**
@@ -231,11 +232,6 @@ export interface CourseInfo {
 export interface ListeningVariable {
 	name: String;
 	type: Array<TokenType>;	// 待定
-}
-
-export interface ChangedVariable<T> {
-	name: string;
-	value: T;
 }
 
 // #endregion

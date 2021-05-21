@@ -1,6 +1,7 @@
 import { CourseIndex, ChapterInfo, CourseInfo } from '../types/types';
-import BucketSort from './BucketSort';
 import React from 'react';
+import BucketSort from './BucketSort';
+import InsertSort from './InsertSort';
 import BubbleSort from './BubbleSort';
 
 const courseMenu: Array<ChapterInfo> = [
@@ -12,7 +13,11 @@ const courseMenu: Array<ChapterInfo> = [
 				course: BucketSort,
 			},
 			{
-				title: '1.2 冒泡排序',
+				title: '1.2 插入排序',
+				course: InsertSort,
+			},
+			{
+				title: '1.3 冒泡排序',
 				course: BubbleSort,
 			},
 		]

@@ -1,69 +1,167 @@
-import { ChangedVariable, TokenType } from "../types/types";
+import { BasicType, ProgramNode } from "../types/types";
 import { BaseCourse, BaseCourseProps } from "./BaseCourse";
+import './BaseCourse.scss';
+import './BucketSort.scss';
 
 const baseCode = `\
 void main() {
-	int array[5] = {5,1,4,2,3}; // 输入数组
-	int bucket[5];              // 桶
-	int i;
-	int value;
-	for (i = 0; i < 5; i++)
-	{
-		// 按顺序把输入数组中的每个数放入对应的桶里
-		value = array[i];
-		bucket[value - 1] = value;
-	}
+    int ball[7];
+    int bucket[16];
+    int i;
+    int value;
+    ball[0] = 1; ball[1] = 4; ball[2] = 5; ball[3] = 2; ball[4] = 6; ball[5] = 7; ball[6] = 3;
+
+    // 1. Sort
+    i = 0;
+    while (i <= 6)
+    {
+        // Put ball[0] ~ ball[6] to the bucket corresponding to their index
+        value = array[i];
+        bucket[value] = value;
+        i = i + 1;
+    }
+
+    // 2. Output
+	i = 0;
+    while (i <= 15)
+    {
+        if (bucket[i] != -1)
+        {
+            print(bucket[i]);
+        }
+        i = i + 1;
+    }
 }
 `
 
-const listeningVariable = [
-	{
-		name: 'array',
-		type: [TokenType.unknown],
-	},
-	{
-		name: 'bucket',
-		type: [TokenType.unknown],
-	},
-	{
-		name: 'i',
-		type: [TokenType.number_dec_int],
-	},
-]
-
-interface State {
-	array: Array<number>;
-	bucket: Array<number>;
-	i: number;
+const testProgramNode: ProgramNode = {
+	functionList: [
+		{
+			returnType: {
+				basic: BasicType.void,	
+			},
+			name: 'main',
+			parameterList: [],
+			variableList: [
+				{
+					name: 'bucket',
+					type: {
+						basic: BasicType.integer,
+						length: [16],
+					},
+					value: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+				},
+				{
+					name: 'ball',
+					type: {
+						basic: BasicType.integer,
+						length: [7],
+					},
+					value: [1, 4, 5, 2, 6, 7, 3],
+				},
+			],
+			syntaxNode: null as any
+		}
+	],
+	variableList: [],
+	syntaxNode: null as any,
 }
+
+interface State {}
 
 class BucketSort extends BaseCourse<BaseCourseProps, State> {
 	constructor(props: (BaseCourseProps) | Readonly<BaseCourseProps>) {
 		super(props);
-		this.state = {
-			array: [],
-			bucket: [],
-			i: NaN,
-		}
-	}
-	getListeningVariable() {
-		return listeningVariable;
+		this.state = {}
 	}
 	getBaseCode() {
 		return baseCode;
 	}
-	onVariableChanged<T>(changedVariable: ChangedVariable<T>) {
-		if (['array', 'bucket', 'i'].includes(changedVariable.name)) {
-			// @ts-ignore
-			this.setState({
-				[changedVariable.name]: changedVariable.value as any
-			});
-		}
-	}
 	render () {
+		let mainFunc = testProgramNode.functionList.find((functionList) => functionList.name === 'main');
+		let bucket, bucketTypeIsValid = false;
+		let ball, ballTypeIsValid = false;
+		if (mainFunc) {
+			bucket = mainFunc.variableList.find((variableList) => variableList.name === 'bucket');
+			if (bucket?.type.basic === BasicType.integer && bucket.type.length?.length === 1) {
+				bucketTypeIsValid = true;
+			}
+			ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
+			if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
+				ballTypeIsValid = true;
+			}
+		}
+		let display1: React.CElement<{}, React.Component<{}, any, any>>;
+		// ProgramNode 检查
+		if (testProgramNode) {
+			// main 函数检查
+			if (mainFunc) {
+				// 变量是否存在检查
+				if (bucket && ball) {
+					// 变量类型是否正确检查
+					if (!bucketTypeIsValid) {
+						display1 = <p>变量 bucket 的类型不对，应是 1 维 int 数组，请修改</p>;
+					} else if (!ballTypeIsValid) {
+						display1 = <p>变量 ball 的类型不对，应是 1 维 int 数组，请修改</p>;
+					} else {
+						let bucketArr = bucket.value as Array<number>;
+						let ballArr = ball.value as Array<number>;
+						display1 = (
+							<>
+								<span>图形演示区</span>
+								{bucketArr.map((number, index) => {
+									return (
+										<div className="bucket" style={{ left: `${index * 48 + 24}px` }}>{index}</div>
+									);
+								})}
+								{ballArr.map((number, index) => {
+									let correspondingElement = bucketArr[number];
+									let position;
+									if (correspondingElement && correspondingElement === number) {
+										position = {
+											left: `${number * 48 + 24}px`,
+											top: '128px',
+										};
+									}
+									return (
+										<div className="ball" style={{ backgroundColor: `hsla(${number * 30}deg, 70%, 50%)`, left: `${index * 48 + 24}px`, ...position }}>{number}</div>
+									);
+								})}
+							</>
+						)
+					}
+				} else if (!bucket) {
+					display1 = <p>缺少变量 bucket，请在代码编辑器补充</p>;
+				} else {
+					display1 = <p>缺少变量 ball，请在代码编辑器补充</p>;
+				}
+			} else {
+				display1 = <p>缺少 main 函数，请在代码编辑器补充</p>;
+			}
+		} else {
+			display1 = <p>动态内容加载失败</p>;
+		}
 		return (
-			<div>
-				<h2>Hallo!</h2>
+			<div className="article-wrapper">
+				<article>
+					<h2>1.1 最快最简单的排序——桶排序</h2>
+					<p>说到“算法”，大家脑海中浮现出来的第一画面是什么呢？</p>
+					<p>相信大多数人，第一时间想到的，便是排序。因为它跟我们的生活实在是太贴近了——大家在操场站队的时候会按照身高排序，考试的名次会按照分数排序，网上购物的时候会按照价格排序，电子邮箱中的邮件往往按照时间排序……这样的事例实在数不胜数，可以说排序无处不在。</p>
+					<p>我们先从最简单的桶排序出发～</p>
+					<img src="./BucketSort/桌球_放大_裁剪.png" alt="桌球" />
+					<p>如图所示，这是一套桌球。它分为全色和花色。当然，咱不拿这套桌球打游戏，咱把它按顺序收起来。</p>
+					<p>有人说，这 16 个球太多了，看得我眼花缭乱的～那行，咱取 7 个全色球，但装球的桶还得是 16 个格子。</p>
+					<p>我们定义桶为 int bucket[16]，7 个球是 int ball[7]，然后分别给这 7 个球写上随机数，比如说，1, 4, 5, 2, 6, 7, 3。</p>
+					<div className="display display1">
+						{display1}
+					</div>
+					<p>接下来的方案就十分简单了，将每个球放进对应序号的格子就行了，不妨在右侧运行试试？上面的图形演示区会马上看到效果。</p>
+					<p>在循环中，<pre>value = array[i]</pre>用于取出球的号码。<pre>bucket[value] = value</pre>用于将桶中对应序号的数字置为球的号码，即相当于把球放进去。最后，从左到右输出除了 -1 以外的数值，便是排序后的结果了。</p>
+					<p>同理，如果我们要把更多的物体进行排序，只需要保证桶的数量大于等于物体就可以了。</p>
+					<p>我们可以看到，这是一个非常快的排序算法，只需要将所有数据遍历 2 遍就行了，第一遍将数据放入“桶”中，第二遍按顺序输出桶的内容，因此时间复杂度是<pre>O(n)</pre>。</p>
+					<p>桶排序从 1956 年就开始被使用了。该算法的基本思想是由 E.J.Issac 和 R.C.Singleton 提出来的。但其实这只是一个简化版的桶排序，并不是真正的桶排序算法，真正的桶排序算法要比这个更加复杂。</p>
+					<p>为什么这么说呢？不知道你有没有发现，这种排序算法只能解决较小整数的排序，但对于小数或者特别大的数字，这种算法就没辙了。比如说，有 1, 3, 1.5 这种数据，要把它进行排序。你或许一眼就知道该怎么做了，既然 1.5 比 1 大，比 3 小，那就把它插到这两者之间呗。没错，这便是下一节要讲到的算法——插入排序。</p>
+				</article>
 			</div>
 		)
 	}
