@@ -1,7 +1,7 @@
 import EventEmitter from "events";
 import { BaseNode, CodeChar, CodeCharWrapper, CodeLine, CodePosition, ProgramNode, SyntaxNode, Token, TokenType } from "../types/types";
 import { mid } from "../utils";
-import { collectFunctionVariable, getVariableTypeBySyntaxNode, GrammarAnalysis } from "./GrammarAnalysis";
+import { collectFunctionVariable, getVariableTypeBySyntaxNode, GrammarAnalysis, findAddr } from "./GrammarAnalysis";
 import { LexicalAnalysis } from "./LexicalAnalysis";
 // import { LexicalAnalysis } from "./LexicalAnalysis";
 
@@ -113,6 +113,17 @@ export class CodeService extends EventEmitter {
 			}
 		}
 		return ret;
+	}
+
+	/**
+	 * 程序在运行状态时，指示当前运行行
+	 */
+	public getCurrentLine(): number {
+		if (this.currentSyntaxNode?.token?.firstCode) {
+			return this.currentSyntaxNode.token.firstCode.ln
+		} else {
+			return -1;
+		}
 	}
 
 	/**
@@ -351,14 +362,15 @@ export class CodeService extends EventEmitter {
 		let baseNode = this.currentBaseNode;
 		let stopflag: boolean = false;
 
+		console.log('step', syntaxNode?.symbol);
 		if (!syntaxNode || !baseNode) {
 			// 程序开始运行
 			this.currentSyntaxNode = this.grammarAnalyzer.getSyntaxTree();
 			this.currentBaseNode = this.grammarAnalyzer.getProgramNode();
-			let programNode = baseNode as ProgramNode;
+			let programNode = this.currentBaseNode as ProgramNode;
 			// 寻找 main
 			let mainFunc = programNode.functionList.find((functionNode) => {
-				return functionNode.name === 'main'
+				return functionNode.name === 'main';
 			})
 			if (!mainFunc) {
 				console.error('缺少 main 函数');
@@ -382,9 +394,9 @@ export class CodeService extends EventEmitter {
 			} else {
 				// 函数直接返回
 				if (baseNode.parentNode) {
+					syntaxNode.value = undefined;		// 函数调用结果为空
 					this.currentBaseNode = baseNode.parentNode!;
 					this.currentSyntaxNode = baseNode.parentNode!.syntaxNode;
-					this.currentSyntaxNode.value = undefined;	// 函数调用结果为空
 				} else {
 					console.log('程序运行完毕');
 				}
@@ -410,14 +422,18 @@ export class CodeService extends EventEmitter {
 					parentNode: baseNode,
 				};
 				baseNode.subNode = newNode;
-				// 收集变量表
+				// 收集变量表和语句列表
 				let variable_definition_list: SyntaxNode | undefined;
-				if (syntaxNode.children!.length === 3 && syntaxNode.children![1].symbol === 'variable_definition_list') {
-					// 只有变量声明，没有实际操作的函数，没什么卵用
+				let statement_list: SyntaxNode | undefined;
+				if (syntaxNode.children?.length === 4) {
+					// 变量声明和实际操作都有
 					variable_definition_list = syntaxNode.children![1];
-				} else if (syntaxNode.children!.length === 4) {
-					// 变量声明和实际操作都有的函数
-					variable_definition_list = syntaxNode.children![1];
+					statement_list = syntaxNode.children![2];
+				} else if (syntaxNode.children![1].symbol === 'statement_list') {
+					// 只有实际操作，没有变量声明
+					statement_list = syntaxNode.children![1];
+				} else {
+					// 只有变量声明，没有实际操作的块，没卵用
 				}
 				if (variable_definition_list) {
 					let variable_definition = variable_definition_list.children![0];
@@ -432,17 +448,14 @@ export class CodeService extends EventEmitter {
 						collectFunctionVariable(variable_definition_list.children![1], newNode);
 					}	
 				}
-				if (syntaxNode.children!.length === 3 && syntaxNode.children![1].symbol === 'statement_list') {
-					// 只有实际操作的函数
-					this.currentSyntaxNode = syntaxNode.children![1];
-					this.currentBaseNode = newNode;
-				} else if (syntaxNode.children!.length === 4) {
+				if (statement_list) {
 					// 变量声明和实际操作都有的函数
 					this.currentSyntaxNode = syntaxNode.children![2];
 					this.currentBaseNode = newNode;
 				} else {
 					// { } 内没有后续操作了，直接向上一层
 					this.currentSyntaxNode = syntaxNode.parent;
+					this.currentBaseNode = baseNode.parentNode;		// 变量表往上走
 				}
 			} else {
 				this.currentSyntaxNode = syntaxNode.parent;
@@ -459,7 +472,7 @@ export class CodeService extends EventEmitter {
 			if (!syntaxNode.executeIndex) {
 				this.currentSyntaxNode = syntaxNode.children![2];		// 计算表达式
 			} else if (syntaxNode.executeIndex === 1) {
-				let value: any = syntaxNode.value;
+				let value: any = syntaxNode.children![2].value;
 				if (value) {
 					this.currentSyntaxNode = syntaxNode.children![4];	// then
 				} else if (syntaxNode.children?.length === 7) {
@@ -473,9 +486,9 @@ export class CodeService extends EventEmitter {
 			if (!syntaxNode.executeIndex) {
 				this.currentSyntaxNode = syntaxNode.children![2];		// 计算表达式
 			} else if (syntaxNode.executeIndex === 1) {
-				let value: any = syntaxNode.value;
+				let value: any = syntaxNode.children![2].value;
 				if (value) {
-					this.currentSyntaxNode = syntaxNode.children![4];	// while compound
+					this.currentSyntaxNode = syntaxNode.children![4];	// while statement
 				}
 			} else {
 				this.currentSyntaxNode = syntaxNode.parent;
@@ -485,26 +498,24 @@ export class CodeService extends EventEmitter {
 			if (!syntaxNode.executeIndex) {
 				if (syntaxNode.children!.length === 2) {
 					// 返回空白
-					this.currentSyntaxNode = syntaxNode.parent;
-					this.currentBaseNode = baseNode.parentNode;		// 变量表往上走
+					syntaxNode.value = undefined;	// 函数调用结果为空
 					if (baseNode.parentNode) {
 						this.currentBaseNode = baseNode.parentNode!;
 						this.currentSyntaxNode = baseNode.parentNode!.syntaxNode;
-						this.currentSyntaxNode.value = undefined;	// 函数调用结果为空
 					} else {
 						console.log('程序运行完毕');
 					}
 				} else {
-					this.currentSyntaxNode = syntaxNode.children![0];
+					this.currentSyntaxNode = syntaxNode.children![1];	// 先计算要 return 的内容
 				}
 			} else {
 				// 返回值
-				this.currentSyntaxNode = syntaxNode.parent;
-				this.currentBaseNode = baseNode.parentNode;				// 变量表往上走
+				syntaxNode.value = syntaxNode.children![1].value;	// 函数调用结果
 				if (baseNode.parentNode) {
-					this.currentBaseNode = baseNode.parentNode!;
-					this.currentSyntaxNode = baseNode.parentNode!.syntaxNode;
-					this.currentSyntaxNode.value = syntaxNode.value;	// 函数调用结果为空
+					this.currentSyntaxNode = syntaxNode.parent;
+					this.currentBaseNode = baseNode.parentNode;				// 变量表往上走
+					// this.currentBaseNode = baseNode.parentNode!;
+					// this.currentSyntaxNode = baseNode.parentNode!.syntaxNode;
 				} else {
 					console.log('程序运行完毕');
 				}
@@ -516,43 +527,197 @@ export class CodeService extends EventEmitter {
 			} else if (syntaxNode.executeIndex === 1) {
 				this.currentSyntaxNode = syntaxNode.children![2];
 			} else {
+				if (syntaxNode.children?.length === 1) {
+					syntaxNode.value = syntaxNode.children[0].value;
+				} else if (syntaxNode.children?.length === 3) {
+					syntaxNode.value = syntaxNode.children[2].value;
+				}
 				this.currentSyntaxNode = syntaxNode.parent;
-				this.currentSyntaxNode!.value = syntaxNode.value;
 			}
 		} else if (syntaxNode.symbol === 'assignment_expression') {
 			if (!syntaxNode.executeIndex) {
-				// 先计算，算完了才赋值
+				// 先计算右值
 				if (syntaxNode.children!.length === 3) {
-					// 基本变量
+					// 带赋值号
 					this.currentSyntaxNode = syntaxNode.children![2];
 				} else {
-					// 数组
-					this.currentSyntaxNode = syntaxNode.children![3];
+					// 不带赋值号
+					this.currentSyntaxNode = syntaxNode.children![0];
 				}
 			} else {
-				// 赋值
-				let id = syntaxNode.children![0];
-				let varTableNode: BaseNode | undefined;
-				varTableNode = baseNode;
-				while (varTableNode && !varTableNode.variableList.find((variable) => variable.name === id.value)) {
-					varTableNode = varTableNode.parentNode;
-				}
-				if (varTableNode) {
-					// let objectVar = varTableNode.variableList.find((variable) => variable.name === id.value);
-
+				if (syntaxNode.children!.length === 3) {
+					// 赋值
+					let addr = findAddr(syntaxNode.children![0], baseNode);
+					if (addr) {
+						addr.value = syntaxNode.children![2].value;
+					} else {
+						this.runtimeError(syntaxNode.token, `找不到标识符`);
+					}
 				} else {
-					this.runtimeError(syntaxNode.token, `找不到标识符 ${id.value}`)
+					// 不是赋值语句节点的第二次遍历，不做赋值操作
 				}
-				
-				
+				// 无论有没有赋值，都得把值返回上去
+				syntaxNode.value = syntaxNode.children![0].value;
 				this.currentSyntaxNode = syntaxNode.parent;
-				this.currentSyntaxNode!.value = syntaxNode.value;
+			}			
+		} else if (syntaxNode.symbol === 'addressing_expression') {
+			let addr = findAddr(syntaxNode.children![0], baseNode);
+			// 这个可以是终点了，所以直接返回
+			syntaxNode.value = addr?.value;
+			this.currentSyntaxNode = syntaxNode.parent;
+		} else if (syntaxNode.symbol === 'logical_expression') {
+			if (!syntaxNode.executeIndex) {
+				this.currentSyntaxNode = syntaxNode.children![0];
+			} else if (syntaxNode.executeIndex === 1) {
+				// 被执行 1 次，如果这不是逻辑判断语句那就直接返回，否则算第 2 个值
+				if (syntaxNode.children?.length === 1) {
+					syntaxNode.value = syntaxNode.children[0].value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else {
+					this.currentSyntaxNode = syntaxNode.children![2];
+				}
+			} else {
+				// 被执行 2 次，那么该做逻辑判断操作然后返回了
+				if (syntaxNode.children![1].symbol === '&&') {
+					syntaxNode.value = syntaxNode.children![0].value && syntaxNode.children![2].value;
+				} else {
+					syntaxNode.value = syntaxNode.children![0].value || syntaxNode.children![2].value;
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
 			}
-			
-		} else if (syntaxNode.symbol === 'compound_statement') {
-		} else if (syntaxNode.symbol === 'compound_statement') {
-		} else if (syntaxNode.symbol === 'compound_statement') {
-		} else if (syntaxNode.symbol === 'compound_statement') {
+		} else if (syntaxNode.symbol === 'equality_expression') {
+			if (!syntaxNode.executeIndex) {
+				this.currentSyntaxNode = syntaxNode.children![0];
+			} else if (syntaxNode.executeIndex === 1) {
+				// 被执行 1 次，如果这不是值判断语句那就直接返回，否则算第 2 个值
+				if (syntaxNode.children?.length === 1) {
+					syntaxNode.value = syntaxNode.children[0].value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else {
+					this.currentSyntaxNode = syntaxNode.children![2];
+				}
+			} else {
+				// 被执行 2 次，那么该做值判断操作然后返回了
+				if (syntaxNode.children![1].symbol === '==') {
+					//@
+					syntaxNode.value = syntaxNode.children![0].value == syntaxNode.children![2].value;	// eslint-disable-line
+				} else {
+					syntaxNode.value = syntaxNode.children![0].value != syntaxNode.children![2].value;	// eslint-disable-line
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
+			}
+		} else if (syntaxNode.symbol === 'relational_expression') {
+			if (!syntaxNode.executeIndex) {
+				this.currentSyntaxNode = syntaxNode.children![0];
+			} else if (syntaxNode.executeIndex === 1) {
+				// 被执行 1 次，如果这不是数值判断语句那就直接返回，否则算第 2 个值
+				if (syntaxNode.children?.length === 1) {
+					syntaxNode.value = syntaxNode.children[0].value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else {
+					this.currentSyntaxNode = syntaxNode.children![2];
+				}
+			} else {
+				// 被执行 2 次，那么该做数值判断操作然后返回了
+				if (syntaxNode.children![1].symbol === '<') {
+					syntaxNode.value = syntaxNode.children![0].value < syntaxNode.children![2].value;
+				} else if (syntaxNode.children![1].symbol === '>') {
+					syntaxNode.value = syntaxNode.children![0].value > syntaxNode.children![2].value;
+				} else if (syntaxNode.children![1].symbol === '<=') {
+					syntaxNode.value = syntaxNode.children![0].value <= syntaxNode.children![2].value;
+				} else {
+					syntaxNode.value = syntaxNode.children![0].value >= syntaxNode.children![2].value;
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
+			}
+		} else if (syntaxNode.symbol === 'additive_expression') {
+			if (!syntaxNode.executeIndex) {
+				this.currentSyntaxNode = syntaxNode.children![0];
+			} else if (syntaxNode.executeIndex === 1) {
+				// 被执行 1 次，如果这不是加减法语句那就直接返回，否则算第 2 个值
+				if (syntaxNode.children?.length === 1) {
+					syntaxNode.value = syntaxNode.children[0].value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else {
+					this.currentSyntaxNode = syntaxNode.children![2];
+				}
+			} else {
+				// 被执行 2 次，那么该做加减法操作然后返回了
+				if (syntaxNode.children![1].symbol === '+') {
+					syntaxNode.value = syntaxNode.children![0].value + syntaxNode.children![2].value;
+				} else {
+					syntaxNode.value = syntaxNode.children![0].value - syntaxNode.children![2].value;
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
+			}
+		} else if (syntaxNode.symbol === 'multiplicative_expression') {
+			if (!syntaxNode.executeIndex) {
+				this.currentSyntaxNode = syntaxNode.children![0];
+			} else if (syntaxNode.executeIndex === 1) {
+				// 被执行 1 次，如果这不是乘除法语句那就直接返回，否则算第 2 个值
+				if (syntaxNode.children?.length === 1) {
+					syntaxNode.value = syntaxNode.children[0].value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else {
+					this.currentSyntaxNode = syntaxNode.children![2];
+				}
+			} else {
+				// 被执行 2 次，那么该做乘除法操作然后返回了
+				if (syntaxNode.children![1].symbol === '*') {
+					syntaxNode.value = syntaxNode.children![0].value * syntaxNode.children![2].value;
+				} else {
+					syntaxNode.value = syntaxNode.children![0].value / syntaxNode.children![2].value;
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
+			}
+		} else if (syntaxNode.symbol === 'unary_expression') {
+			if (!syntaxNode.executeIndex) {
+				this.currentSyntaxNode = syntaxNode.children![0];
+			} else {
+				if (syntaxNode.children![0].symbol === '+') {
+					syntaxNode.value = + syntaxNode.children![1].value;
+				} else if (syntaxNode.children![0].symbol === '-') {
+					syntaxNode.value = - syntaxNode.children![1].value;
+				} else {
+					syntaxNode.value = syntaxNode.children![1].value;
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
+			}
+		} else if (syntaxNode.symbol === 'primary_expression') {
+			if (!syntaxNode.executeIndex) {
+				if (syntaxNode.children![0].symbol === 'addressing_expression') {
+					let addr = findAddr(syntaxNode.children![0], baseNode);
+					syntaxNode.value = addr?.value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else if (syntaxNode.children![0].symbol === 'NUM') {
+					syntaxNode.value = syntaxNode.children![0].value;
+					this.currentSyntaxNode = syntaxNode.parent;
+				} else if (syntaxNode.children![0].symbol === 'function_call') {
+					this.currentSyntaxNode = syntaxNode.children![0];
+				} else {
+					this.currentSyntaxNode = syntaxNode.children![1];
+				}
+			} else {
+				if (syntaxNode.children![0].symbol === 'function_call') {
+					syntaxNode.value = syntaxNode.children![0].value;
+				} else {
+					syntaxNode.value = syntaxNode.children![1].value;
+				}
+				this.currentSyntaxNode = syntaxNode.parent;
+			}
+		} else if (syntaxNode.symbol === 'function_call') {
+			let functionNode = this.grammarAnalyzer.getProgramNode()?.functionList.findIndex((functionNode) => {
+				return functionNode.name === syntaxNode?.children![0].value;
+			});
+			if (functionNode) {
+				if (syntaxNode.children?.length === 4) {
+
+				}
+			} else {
+				this.runtimeError(syntaxNode.token, `找不到函数`);
+			}
+		} else if (syntaxNode.symbol === 'logical_expression_list') {
+
 		}
 		
 		if (syntaxNode) {

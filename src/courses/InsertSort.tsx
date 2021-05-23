@@ -15,7 +15,7 @@ void main() {
     i = 0;
     while (i <= 6)
     {
-        // 一 层 循 环 ： 拿 起 ball[i]
+        // 一 层 循 环 ： 拿 起  ball[i]
         value = ball[i];
         while (j <= 6)
         {
@@ -33,7 +33,6 @@ void main() {
             }
             j = j + 1;
         }
-        value = array[i];
         box[value] = value;
         i = i + 1;
     }

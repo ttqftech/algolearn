@@ -21,8 +21,6 @@ interface State {
 	}
 	syntaxError?: {
 		position: {
-			left: number,
-			top: number,
 			ln: number,
 			col: number,
 		};
@@ -99,17 +97,11 @@ class CodeEditor extends React.Component<Props, State> {
 						col: 0
 					};
 				}
-				let editorPosition = {
-					left: getWindowOffsetLeft(this.codeareaElemRef!),
-					top: getWindowOffsetTop(this.codeareaElemRef!),
-				}
 				this.setState({
 					syntaxError: {
 						position: {
 							ln: codePosition.ln,
 							col: codePosition.col,
-							left: (codePosition.col + 0.5) * CW + editorPosition.left + 4,
-							top: (codePosition.ln + 1) * CH + editorPosition.top - 4,
 						},
 						message: '语法错误',
 					}
@@ -175,6 +167,7 @@ class CodeEditor extends React.Component<Props, State> {
 	 */
 	setCode(code: string) {
 		this.codeService.resetCode(code);
+		this.refreshCodeareaSize();
 	}
 
 	/**
@@ -196,6 +189,7 @@ class CodeEditor extends React.Component<Props, State> {
 			pointerPos: newPos
 		});
 		element.value = '';
+		this.refreshCodeareaSize();
 		// this.scrollPointerIntoView(newPos);
 	}
 
@@ -258,7 +252,8 @@ class CodeEditor extends React.Component<Props, State> {
 						ln: newChar.ln,
 						col: newChar.col,
 					}
-				});	
+				});
+				this.refreshCodeareaSize();
 				break;
 			case 'Delete':
 				if (event.altKey) {
@@ -271,7 +266,8 @@ class CodeEditor extends React.Component<Props, State> {
 						ln: newChar.ln,
 						col: newChar.col,
 					}
-				});	
+				});
+				this.refreshCodeareaSize();
 				break;
 		// 	default:
 		// 		break;
@@ -327,24 +323,8 @@ class CodeEditor extends React.Component<Props, State> {
 				width: document.documentElement.clientWidth - ev.pageX + leftBarDragX - 16,
 	
 			});
-			// 语法错误指示器位置移动
-			if (this.state.syntaxError) {
-				let editorPosition = {
-					left: getWindowOffsetLeft(this.codeareaElemRef!),
-					top: getWindowOffsetTop(this.codeareaElemRef!),
-				};
-				let syntaxErrorPosition = this.state.syntaxError.position;
-				this.setState({
-					syntaxError: {
-						...this.state.syntaxError,
-						position: {
-							...syntaxErrorPosition,
-							left: (syntaxErrorPosition.col + 0.5) * CW + editorPosition.left + 4,
-							top: (syntaxErrorPosition.ln + 1) * CH + editorPosition.top - 4,
-						}
-					}
-				});
-			}
+			// 代码编辑器宽度适配
+			this.refreshCodeareaSize();
 		};
 		let upListener = (ev: MouseEvent) => {
 			document.body.removeEventListener('mousemove', moveListener);
@@ -352,6 +332,13 @@ class CodeEditor extends React.Component<Props, State> {
 		}
 		document.body.addEventListener('mousemove', moveListener);
 		document.body.addEventListener('mouseup', upListener);
+	}
+
+	onStepClick() {
+		this.codeService.step();
+		this.setState({
+			runningLine: this.codeService.getCurrentLine()
+		});
 	}
 
 	/**
@@ -368,10 +355,11 @@ class CodeEditor extends React.Component<Props, State> {
 		return (
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
 				<div className="controller">
-					<button>单步</button>
-					<button>重启</button>
+					<button onClick={this.onStepClick.bind(this)}>单步</button>
+					<button onClick={this.onStepClick.bind(this)}>重启</button>
 				</div>
 				<div className="editor">
+					<div className="linepointer" style={{ width: this.state.codeareaSize.width, top: (this.state.runningLine || -1) * CH }}></div>
 					<div className="lnarea">
 						{this.codeService.getCodeLines().map((codeLine, ln) => {
 							return (
@@ -382,14 +370,14 @@ class CodeEditor extends React.Component<Props, State> {
 					<div className="codearea" ref={div => this.codeareaElemRef = div}>
 						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} style={{ width: this.state.codeareaSize.width }} />
 						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * CW + 3}px`, top: `${this.state.pointerPos.ln * CH}px` }} ref={div => this.pointerElemRef = div} />
-						{this.state.syntaxError ? (
-							<div className="syntaxerror" style={{ left: this.state.syntaxError.position.left, top: this.state.syntaxError.position.top }}>
+						<CodeLinesComp codeService={this.codeService}></CodeLinesComp>
+					</div>
+					{this.state.syntaxError ? (
+							<div className="syntaxerror" style={{ left: (this.state.syntaxError.position.col + 0.5) * CW + 40, top: (this.state.syntaxError.position.ln + 1) * CH }}>
 								<div className="triangle"></div>
 								<div className="message">{this.state.syntaxError.message}</div>
 							</div>
 						) : null}
-						<CodeLinesComp codeService={this.codeService}></CodeLinesComp>
-					</div>
 				</div>
 				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}>
 					<div className="draggerimg"></div>
@@ -544,6 +532,7 @@ function getTokenColor(tokenType: TokenType): string {
 			return '#FF0000';		// 暂不支持
 		case TokenType.bit_logic_and:
 		case TokenType.bit_logic_or:
+			return '#994444'
 		case TokenType.bit_and:
 		case TokenType.bit_and_assign:
 		case TokenType.bit_or:
