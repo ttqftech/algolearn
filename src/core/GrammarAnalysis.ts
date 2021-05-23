@@ -5,7 +5,8 @@ const hash: Map<string, number> = new Map();	// 将符号字符串映射到 LR �
 const productions: Array<Production> = [];		// 文法（产生式）列表
 
 /**
- * 传入 addressing_expression 和 baseNode，找到 baseNode 中存储对应变量的位置
+ * 传入 addressing_expression | assignment_expression（只要第 1 个儿子是 id）和 baseNode
+ * 找到 baseNode 中存储对应变量的位置
  */
 export function findAddr(syntaxNode: SyntaxNode, baseNode: BaseNode): Variable | undefined {
 	let id = syntaxNode.children![0];
@@ -15,14 +16,18 @@ export function findAddr(syntaxNode: SyntaxNode, baseNode: BaseNode): Variable |
 	while (varTableNode?.parentNode && !variable) {
 		// 如果在这层的变量表找不到，而且可以向上，那么让变量表向上一层
 		varTableNode = varTableNode.parentNode;
-		variable = varTableNode.variableList.find((variable) => variable.name === id.value)
+		variable = varTableNode.variableList.find((variable) => variable.name === id.value);
 	}
-	// 数组相关处理
 	return variable;
 }
 
 /**
  * C 语言变量类型转本工程变量类型 VariableType
+ * variable_type -> VOID | INT | FLOAT
+ * variable_definition -> variable_type ID ; | variable_type ID array_closure ;
+ * parameter_declaration -> variable_type ID | variable_type ID array_closure
+ * 
+ * array_closure -> [ NUM ] array_closure
  */
 export function getVariableTypeBySyntaxNode(node: SyntaxNode): VariableType {
 	if (node.symbol === 'variable_type') {	// 基本类型
@@ -40,7 +45,6 @@ export function getVariableTypeBySyntaxNode(node: SyntaxNode): VariableType {
 		if (node.children![2].symbol === 'array_closure') {
 			let numArray: Array<number> = [];
 			let subNode = node.children![2];
-			numArray.push(subNode.children![1].value);		// 记录一维长度
 			while (subNode.children?.length === 4) {
 				numArray.push(subNode.children![1].value);
 				subNode = subNode.children![3];
@@ -59,7 +63,6 @@ export function getVariableTypeBySyntaxNode(node: SyntaxNode): VariableType {
 		if (node.children!.length === 3) {
 			let numArray: Array<number> = [];
 			let subNode = node.children![2];
-			numArray.push(subNode.children![1].value);		// 记录一维长度
 			while (subNode.children?.length === 4) {
 				numArray.push(subNode.children![1].value);
 				subNode = subNode.children![3];
@@ -76,6 +79,105 @@ export function getVariableTypeBySyntaxNode(node: SyntaxNode): VariableType {
 		}
 	} else {
 		throw new Error("变量类型错误");
+	}
+}
+
+/**
+ * 依据变量类型新建变量
+ */
+export function createVariable(type: VariableType): any {
+	if (type.basic === BasicType.integer || type.basic === BasicType.float) {
+		if (type.length) {
+			let total = type.length.reduce((prev, curr) => prev * curr);
+			return new Array(total).fill(0);
+		}
+	} else {
+		return undefined;
+	}
+}
+
+/**
+ * 在赋值或获取数组值时计算应该取数组的哪个数字
+ * 中括号内的元素值（equality_expression.value）必须已经计算出来，否则请先在别处计算好
+ * array_expression_closure -> [ equality_expression ] | [ equality_expression ] array_expression_closure
+ */
+function getArrayOffset(variableType: VariableType, arrayExpNode: SyntaxNode): number {
+	// 获取数组每一维的地址权重
+	let weights: Array<number> = [1];
+	variableType.length!.reduceRight((prev, curr) => {
+		weights.unshift(prev);
+		return prev * curr;
+	})
+	// 计算
+	let value = 0;
+	let node = arrayExpNode;
+	// 从 1 维开始计算
+	while (arrayExpNode.children!.length === 4) {
+		if (value >= weights.length - 1) {
+			// 如果调用时的维数比声明还多，返回错误
+			return NaN;
+		}
+		value += weights[value] * node.children![1].value;
+		node = node.children![3];
+		value++;
+	}
+	// 计算最后一维（如果只有 1 维，那么上面的 while 就不会执行）
+	value += weights[value] * node.children![1].value;
+	return value;
+}
+
+/**
+ * 给出 baseNode，自动 findAddr 到对应变量，然后通过 addressing_expression 判断是要取数组的哪个值， 进而赋值
+ * assignment_expression -> ID = assignment_expression | ID array_expression_closure = assignment_expression
+ * array_expression_closure -> [ equality_expression ] | [ equality_expression ] array_expression_closure
+ */
+export function setVariable(baseNode: BaseNode, value: number, assNode: SyntaxNode, arrayExpNode?: SyntaxNode): boolean {
+	let baseVarAddr = findAddr(assNode, baseNode);
+	if (!baseVarAddr) {
+		return false;	// 找不到变量
+	}
+	if (!baseVarAddr.type.length) {
+		// 如果变量声明时就是 0 维，那么不管赋值时写几维（0 维才是合法的），直接给它赋值
+		baseVarAddr.value = value;
+	} else if (arrayExpNode) {
+		// 变量声明是数组，赋值也是数组
+		let offset = getArrayOffset(baseVarAddr.type, arrayExpNode);
+		if (isNaN(offset)) {
+			// 如果调用时的维数比声明还多，返回错误
+			return false;
+		}
+		(baseVarAddr.value as Array<number>)[offset] = value;
+	} else {
+		// 变量声明是数组，赋值是单值，不合法，但是给它过，给 0 序号赋值
+		(baseVarAddr.value as Array<number>)[0] = value;
+	}
+	return true;
+}
+
+/**
+ * 给出 baseNode，自动 findAddr 到对应变量，然后通过 addressing_expression 判断是要取数组的哪个值
+ * addressing_expression -> ID | ID array_expression_closure
+ * array_expression_closure -> [ equality_expression ] | [ equality_expression ] array_expression_closure
+ */
+ export function getVariable(baseNode: BaseNode, addrExpNode: SyntaxNode): any {
+	let baseVarAddr = findAddr(addrExpNode, baseNode);
+	if (!baseVarAddr) {
+		return undefined;	// 找不到变量
+	}
+	if (!baseVarAddr.type.length) {
+		// 如果变量声明时就是 0 维，那么不管取值时写几维（0 维才是合法的），直接给它取值
+		return baseVarAddr.value;
+	} else if (addrExpNode.children!.length === 2) {
+		// 变量声明是数组，赋值也是数组
+		let offset = getArrayOffset(baseVarAddr.type, addrExpNode.children![1]);
+		if (isNaN(offset)) {
+			// 如果调用时的维数比声明还多，返回错误
+			return undefined;
+		}
+		return (baseVarAddr.value as Array<number>)[offset];
+	} else {
+		// 变量声明是数组，赋值是单值，不合法，但是给它过，给 0 序号赋值
+		return (baseVarAddr.value as Array<number>)[0];
 	}
 }
 
@@ -110,9 +212,11 @@ export function collectFunctionVariable(variable_definition_list: SyntaxNode, fu
 	let variable_definition = variable_definition_list.children![0];
 	let name = variable_definition.children![1].value;
 	let type = getVariableTypeBySyntaxNode(variable_definition);
+	let value = createVariable(type);
 	functionNode.variableList.push({
 		name,
 		type,
+		value,
 	});
 	// 递归查找
 	if (variable_definition_list.children!.length === 2) {
@@ -127,14 +231,40 @@ export function collectFunctionParameter(parameter_list: SyntaxNode, functionNod
 	let parameter_declaration = parameter_list.children![0];
 	let name = parameter_declaration.children![1].value;
 	let type = getVariableTypeBySyntaxNode(parameter_declaration);
+	let value = createVariable(type);
 	functionNode.parameterList.push({
 		name,
 		type,
+		value,
 	});
 	// 递归查找
 	if (parameter_list.children!.length === 2) {
 		collectFunctionParameter(parameter_list.children![1], functionNode);
 	}
+}
+
+/**
+ * 调用函数时，将实际参数应用到目标函数的形式参数
+ */
+export function applyFunctionParameter(objFuncNode: FunctionNode, logiExpList: SyntaxNode): void {
+	let index = 0;
+	while (logiExpList.children!.length === 3) {
+		objFuncNode.parameterList[index].value = logiExpList.children![1].value;
+		index++;
+	}
+	objFuncNode.parameterList[index].value = logiExpList.children![0].value;
+}
+
+/**
+ * 调用内置函数时，将实际参数转换成列表
+ */
+ export function attractFunctionParameter(logiExpList: SyntaxNode): Array<any> {
+	let ret: Array<any> = [];
+	while (logiExpList.children!.length === 3) {
+		ret.push(logiExpList.children![1].value);
+	}
+	ret.push(logiExpList.children![0].value);
+	return ret;
 }
 
 /**
@@ -231,6 +361,7 @@ export class GrammarAnalysis {
 		console.log('LR', LR);
 		console.log('hash', hash);
 		console.log('productions', productions);
+		(window as any).grammar = this;
 	}
 
 	public getSyntaxTree(): SyntaxNode | undefined {
@@ -371,301 +502,307 @@ export class GrammarAnalysis {
 
 // #region 手动输入语法区
 
-const LRstr = `err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err 4 5 err err err err err err err err 6 err err err err err err 7 8 9 
-err err err err err err err err err err err err err err err err err err err r8 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err r7 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err r6 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r3 err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err 4 10 err err err err err err err err err err err err err err err err err 11 
-err r1 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err acc err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 7 12 13 
-err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err 4 14 err err err err err err err err err err err err err err err err err 11 
-err err err err err err err err err err err err err err err err err err err s15 err err err err err err err err err err err err err err err err err err err err err 16 err err err err err err err err err err err err err err err err err err err err 
-err r4 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err s17 err err err err err err err err err err err err err err err err err err err err err 16 err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err r24 err err r24 err err r24 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err s18 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r2 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s19 err err err err err err s20 err err err err err err err err err err err err err err err s21 err err err err err err 22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err s24 err err err err err err err 23 err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s20 err err err err err err err err err err err err err err err s21 err err err err err err 22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s25 err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err err err err err err err err 26 27 err err err err err err err err err err 28 
-err err err err err err err err err err err err err err err err err err r25 err err r25 err err r25 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err s29 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s30 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r5 err err err err err err err err err err err err err err err err r5 err err r5 err err r5 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err s1 s35 s36 s2 s37 s38 s3 s39 err err s62 err s63 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 56 57 58 59 60 61 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err r13 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r15 err err s64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err s66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err r26 err err r26 err err r26 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 75 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err r71 err err r71 err r71 err err err err err err err err err err r71 err err r71 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r72 err err r72 err r72 err err err err err err err err err err r72 err err r72 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r34 err err r34 err r34 err r34 err err err err err err err err r34 r34 err r34 r34 err r34 err err r34 err r34 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r46 err r46 s83 err r46 r46 r46 r46 r46 r46 r46 r46 r46 r46 r46 r46 err err err err err err err err err s84 err err r46 err err err err 85 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s86 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r68 err r68 err err r68 r68 r68 r68 r68 r68 r68 r68 err r68 r68 r68 err err err err err err err err err err err err r68 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s87 err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 42 err 44 88 err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err s89 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r54 err r54 err err err err r54 err err r54 s90 s91 err r54 s92 s93 err err err err err err err err err err err err r54 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r67 err r67 err err r67 r67 r67 r67 r67 r67 r67 r67 s94 r67 r67 r67 err err err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err s95 err err r41 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r29 err err r29 err r29 err r29 err err err err err err err err r29 r29 err r29 r29 err r29 err err r29 err r29 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err s96 err err err err r48 err err r48 err err err err err err err err err err err err err err err err err err s97 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s98 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r30 err err r30 err r30 err r30 err err err err err err err err r30 r30 err r30 r30 err r30 err err r30 err r30 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r69 err r69 err err r69 r69 r69 r69 r69 r69 r69 r69 err r69 r69 r69 err err err err err err err err err err err err r69 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r32 err err r32 err r32 err r32 err err err err err err err err r32 r32 err r32 r32 err r32 err err r32 err r32 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r33 err err r33 err r33 err r33 err err err err err err err err r33 r33 err r33 r33 err r33 err err r33 err r33 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err r44 err err r44 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r59 err r59 err err err s99 r59 s100 err r59 r59 r59 err r59 r59 r59 err err err err err err err err err err err err r59 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r65 err r65 err err r65 r65 r65 r65 r65 r65 r65 r65 err r65 r65 r65 err err err err err err err err err err err err r65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-s101 err r51 err err err err r51 err err r51 err err err s102 err err err err err err err err err err err err err err r51 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r31 err err r31 err r31 err r31 err err err err err err err err r31 r31 err r31 r31 err r31 err err r31 err r31 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s62 err r27 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 103 57 58 err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s104 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r62 err r62 err err s105 r62 r62 r62 s106 r62 r62 r62 err r62 r62 r62 err err err err err err err err err err err err r62 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err err 108 err err err err err err err 47 err err err err err err err err err err 52 err err err err err 109 58 err err err 
-err err err r23 err err r23 err r23 err r23 err err err err err err err s1 r23 r23 s2 r23 r23 s3 r23 err err r23 err r23 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 59 110 61 
-err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s62 err s112 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 111 57 58 err err err 
-err err err err err err err err err err err err err err err err err err err s113 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err s1 s35 s36 s2 s37 s38 s3 s39 err err s62 err s116 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 114 57 58 59 115 61 
-err r19 err err err err err err err err err err err err err err err err r19 err err r19 err err r19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err err err err err err err err 26 117 err err err err err err err err err err 28 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err r14 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r17 err err r17 err err err err err err err err err err err err err err err err err err s118 err err err err err err 119 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err r10 err err err err err err err err err err err err err err err s21 err err err err err err 120 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 121 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-r46 err r46 s122 r46 r46 r46 r46 r46 r46 err r46 r46 r46 r46 r46 r46 err err err err err err err err err s123 err err r46 err err err err 124 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r68 err r68 err r68 r68 r68 r68 r68 r68 err r68 r68 err r68 r68 r68 err err err err err err err err err err err err r68 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r54 err r54 err r54 err err r54 err err err s125 s126 err r54 s127 s128 err err err err err err err err err err err err r54 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r67 err r67 err r67 r67 r67 r67 r67 r67 err r67 r67 s129 r67 r67 r67 err err err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r41 err err s130 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err s131 err r48 err err r48 err err err err err err err err err err err err err err err err err err err err err s132 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s133 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r69 err r69 err r69 r69 r69 r69 r69 r69 err r69 r69 err r69 r69 r69 err err err err err err err err err err err err r69 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r44 err err r44 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r59 err r59 err r59 err s134 r59 s135 err err r59 r59 err r59 r59 r59 err err err err err err err err err err err err r59 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r65 err r65 err r65 r65 r65 r65 r65 r65 err r65 r65 err r65 r65 r65 err err err err err err err err err err err err r65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-s136 err r51 err r51 err err r51 err err err err err err s137 err err err err err err err err err err err err err err r51 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r62 err r62 err r62 s138 r62 r62 r62 s139 err r62 r62 err r62 r62 r62 err err err err err err err err err err err err r62 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err err 141 err err err err err err err 76 err err err err err err err err err err 79 err err err err err 142 82 err err err 
-err err err s68 s143 err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 74 err err 76 err err err err err 144 145 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 151 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-r47 err r47 err err r47 r47 r47 r47 r47 r47 r47 r47 r47 r47 r47 r47 err err err err err err err err err err err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 158 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err r39 err err r39 err r39 err r39 err err err err err err err err r39 r39 err r39 r39 err r39 err err r39 err r39 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s159 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 160 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err err err err 47 err err err err err err err 51 err err 52 err 161 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err err err err 47 err err err err err err err 51 err err 52 err 162 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err err err err 47 err err err err err err err 51 err err 52 err 163 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err err err err 47 err err err err err err err 51 err err 52 err 164 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 165 err 44 err err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 42 err 44 166 err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err 44 err err 47 err err err err err 167 err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err 44 err err 47 err err err err err 168 err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err r35 err err r35 err r35 err r35 err err err err err err err err r35 r35 err r35 r35 err r35 err err r35 err r35 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 169 108 err err err err err err err 47 err err err err err err err 51 err err 52 err err err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 170 108 err err err err err err err 47 err err err err err err err 51 err err 52 err err err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err 171 err err 47 err err err err err err err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err 40 108 err err err err 172 err err 47 err err err err err err err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err r28 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r21 err err err err err err err err err err err err err err err err r21 err err r21 err err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err err 108 err err err err err err err 47 err err err err err err err 173 err err 52 err err err err err 57 58 err err err 
-err err err s31 err err s32 err s33 err err err err err err err err err err s107 err err s37 err err err err err err err err err 108 err err err err err err err 47 err err err err err err err 174 err err 52 err err err err err 57 58 err err err 
-r46 err r46 s83 err r46 r46 r46 r46 r46 r46 r46 r46 err r46 r46 r46 err err err err err err err err err s175 err err r46 err err err err 176 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r67 err r67 err err r67 r67 r67 r67 r67 r67 r67 r67 err r67 r67 r67 err err err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r66 err r66 err err r66 r66 r66 r66 r66 r66 r66 r66 err r66 r66 r66 err err err err err err err err err err err err r66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r24 err err r24 err r24 err r24 err err err err err err err err r24 r24 err r24 r24 err r24 err err r24 err r24 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s177 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r20 err err err err err err err err err err err err err err err err r20 err err r20 err err r20 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s178 err err err err err err err err err err err err err err err s21 err err err err err err 179 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s180 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s62 err s182 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 181 57 58 err err err 
-err err err r19 err err r19 err r19 err r19 err err err err err err err err r19 r19 err r19 r19 err r19 err err r19 err r19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r16 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err s183 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r18 err err r18 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err r9 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s184 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 s185 err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 74 err err 76 err err err err err 144 186 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 187 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-r47 err r47 err r47 r47 r47 r47 r47 r47 err r47 r47 r47 r47 r47 r47 err err err err err err err err err err err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err err err err 76 err err err err err err err 78 err err 79 err 188 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err err err err 76 err err err err err err err 78 err err 79 err 189 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err err err err 76 err err err err err err err 78 err err 79 err 190 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err err err err 76 err err err err err err err 78 err err 79 err 191 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 192 err 74 err err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 193 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 74 err err 76 err err err err err 194 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 74 err err 76 err err err err err 195 err 78 err err 79 err 80 err err err 81 82 err err err 
-r70 err r70 err err r70 r70 r70 r70 r70 r70 r70 r70 err r70 r70 r70 err err err err err err err err err err err err r70 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 196 141 err err err err err err err 76 err err err err err err err 78 err err 79 err err err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 197 141 err err err err err err err 76 err err err err err err err 78 err err 79 err err err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 198 err err 76 err err err err err err err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 199 err err 76 err err err err err err err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err err 141 err err err err err err err 76 err err err err err err err 200 err err 79 err err err err err 81 82 err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err err 141 err err err err err err err 76 err err err err err err err 201 err err 79 err err err err err 81 82 err err err 
-r46 err r46 s122 r46 r46 r46 r46 r46 r46 err r46 r46 err r46 r46 r46 err err err err err err err err err s202 err err r46 err err err err 203 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r67 err r67 err r67 r67 r67 r67 r67 r67 err r67 r67 err r67 r67 r67 err err err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r66 err r66 err r66 r66 r66 r66 r66 r66 err r66 r66 err r66 r66 r66 err err err err err err err err err err err err r66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r73 err r73 err err r73 r73 r73 r73 r73 r73 r73 r73 err r73 r73 r73 err err err err err err err err err err err err r73 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r75 err err s204 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s205 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 206 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-r46 err err s207 err r46 r46 err r46 r46 err r46 r46 err r46 r46 r46 err err err err err err err err err s208 r46 err err err err err err 209 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r68 err err err err r68 r68 err r68 r68 err r68 r68 err r68 r68 r68 err err err err err err err err err err r68 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r54 err err err err err err err err err err s210 s211 err r54 s212 s213 err err err err err err err err err err r54 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r67 err err err err r67 r67 err r67 r67 err r67 r67 err r67 r67 r67 err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s214 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r69 err err err err r69 r69 err r69 r69 err r69 r69 err r69 r69 r69 err err err err err err err err err err r69 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r59 err err err err err s215 err s216 err err r59 r59 err r59 r59 r59 err err err err err err err err err err r59 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r65 err err err err r65 r65 err r65 r65 err r65 r65 err r65 r65 r65 err err err err err err err err err err r65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-s217 err err err err err err err err err err err err err s218 err err err err err err err err err err err err r51 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r62 err err err err s219 r62 err r62 s220 err r62 r62 err r62 r62 r62 err err err err err err err err err err r62 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err err 150 err err err err err err err 152 err err err err err err err err err err 154 err err err err err 221 157 err err err 
-err err err err s222 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r40 err err r40 err r40 err r40 err err err err err err err err r40 r40 err r40 r40 err r40 err err r40 err r40 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s223 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r55 err r55 err err err err r55 err err r55 err err err r55 err err err err err err err err err err err err err err r55 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r57 err r57 err err err err r57 err err r57 err err err r57 err err err err err err err err err err err err err err r57 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r56 err r56 err err err err r56 err err r56 err err err r56 err err err err err err err err err err err err err err r56 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r58 err r58 err err err err r58 err err r58 err err err r58 err err err err err err err err err err err err err err r58 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err r43 err err r43 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err r42 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err r49 err err r49 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err r50 err err r50 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r60 err r60 err err err err r60 err err r60 r60 r60 err r60 r60 r60 err err err err err err err err err err err err r60 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r61 err r61 err err err err r61 err err r61 r61 r61 err r61 r61 r61 err err err err err err err err err err err err r61 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err r53 err err err err r53 err err r53 err err err err err err err err err err err err err err err err err err r53 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err r52 err err err err r52 err err r52 err err err err err err err err err err err err err err err err err err r52 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r63 err r63 err err err r63 r63 r63 err r63 r63 r63 err r63 r63 r63 err err err err err err err err err err err err r63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r64 err r64 err err err r64 r64 r64 err r64 r64 r64 err r64 r64 r64 err err err err err err err err err err err err r64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 224 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-r47 err r47 err err r47 r47 r47 r47 r47 r47 r47 r47 err r47 r47 r47 err err err err err err err err err err err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err r22 err err err err err err err err err err err err err err err err r22 err err r22 err err r22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r25 err err r25 err r25 err r25 err err err err err err err r25 r25 r25 r25 r25 r25 r25 r25 err err r25 err r25 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s225 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r21 err err r21 err r21 err r21 err err err err err err err err r21 r21 err r21 r21 err r21 err err r21 err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s226 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r20 err err r20 err r20 err r20 err err err err err err err err r20 r20 err r20 r20 err r20 err err r20 err r20 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s227 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r70 err r70 err r70 r70 r70 r70 r70 r70 err r70 r70 err r70 r70 r70 err err err err err err err err err err err err r70 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r73 err r73 err r73 r73 r73 r73 r73 r73 err r73 r73 err r73 r73 r73 err err err err err err err err err err err err r73 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s228 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s229 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r55 err r55 err r55 err err r55 err err err err err err r55 err err err err err err err err err err err err err err r55 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r57 err r57 err r57 err err r57 err err err err err err r57 err err err err err err err err err err err err err err r57 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r56 err r56 err r56 err err r56 err err err err err err r56 err err err err err err err err err err err err err err r56 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r58 err r58 err r58 err err r58 err err err err err err r58 err err err err err err err err err err err err err err r58 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r43 err err r43 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r42 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r49 err err r49 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r50 err err r50 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r60 err r60 err r60 err err r60 err err err r60 r60 err r60 r60 r60 err err err err err err err err err err err err r60 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r61 err r61 err r61 err err r61 err err err r61 r61 err r61 r61 r61 err err err err err err err err err err err err r61 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err r53 err r53 err err r53 err err err err err err err err err err err err err err err err err err err err err r53 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err r52 err r52 err err r52 err err err err err err err err err err err err err err err err err err err err err r52 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r63 err r63 err r63 err r63 r63 r63 err err r63 r63 err r63 r63 r63 err err err err err err err err err err err err r63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r64 err r64 err r64 err r64 r64 r64 err err r64 r64 err r64 r64 r64 err err err err err err err err err err err err r64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 230 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-r47 err r47 err r47 r47 r47 r47 r47 r47 err r47 r47 err r47 r47 r47 err err err err err err err err err err err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 74 err err 76 err err err err err 144 231 78 err err 79 err 80 err err err 81 82 err err err 
-r74 err r74 err err r74 r74 r74 r74 r74 r74 r74 r74 err r74 r74 r74 err err err err err err err err err err err err r74 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s232 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 s233 err s32 err s33 err err err err err err err err err err s140 err err s70 err err err err err err err err 71 141 err err err err 74 err err 76 err err err err err 144 234 78 err err 79 err 80 err err err 81 82 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 235 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-r47 err err err err r47 r47 err r47 r47 err r47 r47 err r47 r47 r47 err err err err err err err err err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err err err err 152 err err err err err err err 153 err err 154 err 236 err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err err err err 152 err err err err err err err 153 err err 154 err 237 err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err err err err 152 err err err err err err err 153 err err 154 err 238 err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err err err err 152 err err err err err err err 153 err err 154 err 239 err err err 156 157 err err err 
-r12 err r12 err err r12 r12 r12 r12 r12 r12 r12 r12 r12 r12 r12 r12 err err err err err err err err err s84 err err r12 err err err err 240 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 241 150 err err err err err err err 152 err err err err err err err 153 err err 154 err err err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 242 150 err err err err err err err 152 err err err err err err err 153 err err 154 err err err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 243 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err 149 150 err err err err 244 err err 152 err err err err err err err 153 err err 154 err 155 err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err err 150 err err err err err err err 152 err err err err err err err 245 err err 154 err err err err err 156 157 err err err 
-err err err s146 err err s32 err s33 err err err err err err err err err err s147 err err s148 err err err err err err err err err 150 err err err err err err err 152 err err err err err err err 246 err err 154 err err err err err 156 157 err err err 
-r66 err err err err r66 r66 err r66 r66 err r66 r66 err r66 r66 r66 err err err err err err err err err err r66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s247 err err err err err err err err s35 s248 err s37 s249 err s250 err err s258 err err 40 41 err err 42 251 44 252 253 47 err err err 254 255 50 err 51 err err 52 err 53 256 257 err 57 58 err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s62 err err 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 259 err 57 58 err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s260 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r26 err err r26 err r26 err r26 err err err err err err err r26 r26 r26 r26 r26 r26 r26 r26 err err r26 err r26 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r22 err err r22 err r22 err r22 err err err err err err err err r22 r22 err r22 r22 err r22 err err r22 err r22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r10 err err r10 err err err err err err err err err err err err err err err err err err s118 err err err err err err 261 err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r74 err r74 err r74 r74 r74 r74 r74 r74 err r74 r74 err r74 r74 r74 err err err err err err err err err err err err r74 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r12 err r12 err r12 r12 r12 r12 r12 r12 err r12 r12 r12 r12 r12 r12 err err err err err err err err err s123 err err r12 err err err err 262 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s263 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r76 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r70 err err err err r70 r70 err r70 r70 err r70 r70 err r70 r70 r70 err err err err err err err err err err r70 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r73 err err err err r73 r73 err r73 r73 err r73 r73 err r73 r73 r73 err err err err err err err err err err r73 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s264 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err s265 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r55 err err err err err err err err err err err err err r55 err err err err err err err err err err err err r55 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r57 err err err err err err err err err err err err err r57 err err err err err err err err err err err err r57 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r56 err err err err err err err err err err err err err r56 err err err err err err err err err err err err r56 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r58 err err err err err err err err err err err err err r58 err err err err err err err err err err err err r58 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r11 err r11 err err r11 r11 r11 r11 r11 r11 r11 r11 r11 r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r60 err err err err err err err err err err r60 r60 err r60 r60 r60 err err err err err err err err err err r60 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r61 err err err err err err err err err err r61 r61 err r61 r61 r61 err err err err err err err err err err r61 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err r53 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err r52 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r63 err err err err err r63 err r63 err err r63 r63 err r63 r63 r63 err err err err err err err err err err r63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r64 err err err err err r64 err r64 err err r64 r64 err r64 r64 r64 err err err err err err err err err err r64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r34 err err r34 err r34 err r34 err err err err err err r34 err r34 r34 err r34 r34 err r34 err err r34 err r34 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s266 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s267 err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 42 err 44 268 err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 58 err err err 
-err err err s269 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r29 err err r29 err r29 err r29 err err err err err err r29 err r29 r29 err r29 r29 err r29 err err r29 err r29 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s270 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r30 err err r30 err r30 err r30 err err err err err err r30 err r30 r30 err r30 r30 err r30 err err r30 err r30 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r32 err err r32 err r32 err r32 err err err err err err r32 err r32 r32 err r32 r32 err r32 err err r32 err r32 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r33 err err r33 err r33 err r33 err err err err err err r33 err r33 r33 err r33 r33 err r33 err err r33 err r33 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r31 err err r31 err r31 err r31 err err err err err err r31 err r31 r31 err r31 r31 err r31 err err r31 err r31 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r36 err err r36 err r36 err r36 err err err err err err s271 err r36 r36 err r36 r36 err r36 err err r36 err r36 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err s1 s35 s36 s2 s37 s38 s3 s39 err err s62 err s274 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 272 57 58 59 273 61 
-err err err r38 err err r38 err r38 err r38 err err err err err err err err r38 r38 err r38 r38 err r38 err err r38 err r38 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r12 err r12 err err r12 r12 r12 r12 r12 r12 r12 r12 err r12 r12 r12 err err err err err err err err err s175 err err r12 err err err err 275 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err r9 err err r9 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r11 err r11 err r11 r11 r11 r11 r11 r11 err r11 r11 r11 r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r12 err r12 err r12 r12 r12 r12 r12 r12 err r12 r12 err r12 r12 r12 err err err err err err err err err s202 err err r12 err err err err 276 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r74 err err err err r74 r74 err r74 r74 err r74 r74 err r74 r74 r74 err err err err err err err err err err r74 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r12 err err err err r12 r12 err r12 r12 err r12 r12 err r12 r12 r12 err err err err err err err err err s208 r12 err err err err err err 277 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 278 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err r39 err err r39 err r39 err r39 err err err err err err r39 err r39 r39 err r39 r39 err r39 err err r39 err r39 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err s279 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s68 err err s32 err s33 err err err err err err err err err err s69 err err s70 err err err err err err err err 71 72 err err 73 err 74 280 err 76 err err err err err 77 err 78 err err 79 err 80 err err err 81 82 err err err 
-err err err r35 err err r35 err r35 err r35 err err err err err err r35 err r35 r35 err r35 r35 err r35 err err r35 err r35 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s62 err err 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 281 err 57 58 err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s282 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s62 err s284 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 283 57 58 err err err 
-err err err r19 err err r19 err r19 err r19 err err err err err err r19 err r19 r19 err r19 r19 err r19 err err r19 err r19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r11 err r11 err err r11 r11 r11 r11 r11 r11 r11 r11 err r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r11 err r11 err r11 r11 r11 r11 r11 r11 err r11 r11 err r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-r11 err err err err r11 r11 err r11 r11 err r11 r11 err r11 r11 r11 err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s285 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r40 err err r40 err r40 err r40 err err err err err err r40 err r40 r40 err r40 r40 err r40 err err r40 err r40 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err s286 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r37 err err r37 err r37 err r37 err err err err err err err err r37 r37 err r37 r37 err r37 err err r37 err r37 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r21 err err r21 err r21 err r21 err err err err err err r21 err r21 r21 err r21 r21 err r21 err err r21 err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s287 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r20 err err r20 err r20 err r20 err err err err err err r20 err r20 r20 err r20 r20 err r20 err err r20 err r20 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s247 err err err err err err err err s35 s248 err s37 s249 err s250 err err s258 err err 40 41 err err 42 251 44 252 253 47 err err err 254 255 50 err 51 err err 52 err 53 256 288 err 57 58 err err err 
-err err err s31 err err s32 err s33 err s247 err err err err err err err err s35 s248 err s37 s249 err s250 err err s258 err err 40 41 err err 42 251 44 252 253 47 err err err 254 255 50 err 51 err err 52 err 53 256 289 err 57 58 err err err 
-err err err r22 err err r22 err r22 err r22 err err err err err err r22 err r22 r22 err r22 r22 err r22 err err r22 err r22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r36 err err r36 err r36 err r36 err err err err err err s290 err r36 r36 err r36 r36 err r36 err err r36 err r36 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err r38 err err r38 err r38 err r38 err err err err err err r38 err r38 r38 err r38 r38 err r38 err err r38 err r38 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
-err err err s31 err err s32 err s33 err s247 err err err err err err err err s35 s248 err s37 s249 err s250 err err s258 err err 40 41 err err 42 251 44 252 253 47 err err err 254 255 50 err 51 err err 52 err 53 256 291 err 57 58 err err err 
-err err err r37 err err r37 err r37 err r37 err err err err err err r37 err r37 r37 err r37 r37 err r37 err err r37 err r37 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+const LRstr = `err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err 4 5 err err err err err err err err 6 err err err err err 7 8 9 
+err err err err err err err err err err err err err err err err err err err r8 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err r7 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err r6 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err r3 err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err 4 10 err err err err err err err err err err err err err err err err 11 
+err r1 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err acc err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 7 12 13 
+err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err 4 14 err err err err err err err err err err err err err err err err 11 
+err err err err err err err err err err err err err err err err err err err s15 err err err err err err err err err err err err err err err err err err err err err 16 err err err err err err err err err err err err err err err err err err err 
+err r4 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err s17 err err err err err err err err err err err err err err err err err err err err err 16 err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err r24 err err r24 err err r24 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err s18 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err r2 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s19 err err err err err err s20 err err err err err err err err err err err err err err err s21 err err err err err err 22 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err s24 err err err err err err err 23 err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s20 err err err err err err err err err err err err err err err s21 err err err err err err 22 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s25 err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err err err err err err err err 26 27 err err err err err err err err err 28 
+err err err err err err err err err err err err err err err err err err r25 err err r25 err err r25 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err s29 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s30 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err r5 err err err err err err err err err err err err err err err err r5 err err r5 err err r5 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err s1 s35 s36 s2 s37 s38 s3 s39 err err s61 err s62 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 56 57 58 59 60 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err r13 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r15 err err s63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err s65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err r26 err err r26 err err r26 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 76 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s31 err err err err err err err err err err err err err err err s83 err err s37 err err err err err err err err err 41 err err err err err err err 47 err err err err err err err err err err 84 err err err err err err err err err 
+err err err s31 err err err err err err err err err err err err err err err s83 err err s37 err err err err err err err err err 41 err err err err err err err 47 err err err err err err err err err err 85 err err err err err err err err err 
+err err err r34 err err r34 err r34 err r34 err err err err err err err err r34 r34 err r34 r34 err r34 err err r34 err r34 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r70 err r70 s86 err r70 r70 r70 r70 r70 r70 r70 r70 s87 r70 r70 r70 err err err err err err err err err s88 err err r70 err err err err 89 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s90 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r67 err r67 err err r67 r67 r67 r67 r67 r67 r67 r67 err r67 r67 r67 err err err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s91 err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 42 err 44 92 err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 err err err 
+err err err s93 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r52 err r52 err err err err r52 err err r52 s94 s95 err r52 s96 s97 err err err err err err err err err err err err r52 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r66 err r66 err err r66 r66 r66 r66 r66 r66 r66 r66 err r66 r66 r66 err err err err err err err err err err err err r66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err s98 err err r41 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r29 err err r29 err r29 err r29 err err err err err err err err r29 r29 err r29 r29 err r29 err err r29 err r29 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err s99 err err err err r46 err err r46 err err err err err err err err err err err err err err err err err err s100 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s101 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r30 err err r30 err r30 err r30 err err err err err err err err r30 r30 err r30 r30 err r30 err err r30 err r30 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r68 err r68 err err r68 r68 r68 r68 r68 r68 r68 r68 err r68 r68 r68 err err err err err err err err err err err err r68 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r32 err err r32 err r32 err r32 err err err err err err err err r32 r32 err r32 r32 err r32 err err r32 err r32 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r33 err err r33 err r33 err r33 err err err err err err err err r33 r33 err r33 r33 err r33 err err r33 err r33 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err r45 err err r45 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r57 err r57 err err err s102 r57 s103 err r57 r57 r57 err r57 r57 r57 err err err err err err err err err err err err r57 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r63 err r63 err err r63 r63 r63 r63 r63 r63 r63 r63 err r63 r63 r63 err err err err err err err err err err err err r63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+s104 err r49 err err err err r49 err err r49 err err err s105 err err err err err err err err err err err err err err r49 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r31 err err r31 err r31 err r31 err err err err err err err err r31 r31 err r31 r31 err r31 err err r31 err r31 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s61 err r27 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 106 57 err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s107 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r60 err r60 err err s108 r60 r60 r60 s109 r60 r60 r60 err r60 r60 r60 err err err err err err err err err err err err r60 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r23 err err r23 err r23 err r23 err err err err err err err s1 r23 r23 s2 r23 r23 s3 r23 err err r23 err r23 err err err err err err err err err err err err err err err err err err err err err err err err err err err 58 110 60 
+err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s61 err s112 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 111 57 err err err 
+err err err err err err err err err err err err err err err err err err err s113 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err s1 s35 s36 s2 s37 s38 s3 s39 err err s61 err s116 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 114 57 58 115 60 
+err r19 err err err err err err err err err err err err err err err err r19 err err r19 err err r19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err s1 err err s2 err err s3 err err err err err err err err err err err err err err err err err err err err err err err err 26 117 err err err err err err err err err 28 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err r14 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r17 err err r17 err err err err err err err err err err err err err err err err err err s118 err err err err err err 119 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err r10 err err err err err err err err err err err err err err err s21 err err err err err err 120 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 121 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s67 err err err err err err err err err err err err err err err s122 err err s71 err err err err err err err err err 73 err err err err err err err 77 err err err err err err err err err err 123 err err err err err err err err err 
+err err err s67 err err err err err err err err err err err err err err err s122 err err s71 err err err err err err err err err 73 err err err err err err err 77 err err err err err err err err err err 124 err err err err err err err err err 
+r70 err r70 s125 r70 r70 r70 r70 r70 r70 err r70 r70 s126 r70 r70 r70 err err err err err err err err err s127 err err r70 err err err err 128 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r67 err r67 err r67 r67 r67 r67 r67 r67 err r67 r67 err r67 r67 r67 err err err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r52 err r52 err r52 err err r52 err err err s129 s130 err r52 s131 s132 err err err err err err err err err err err err r52 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r66 err r66 err r66 r66 r66 r66 r66 r66 err r66 r66 err r66 r66 r66 err err err err err err err err err err err err r66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r41 err err s133 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err s134 err r46 err err r46 err err err err err err err err err err err err err err err err err err err err err s135 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s136 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r68 err r68 err r68 r68 r68 r68 r68 r68 err r68 r68 err r68 r68 r68 err err err err err err err err err err err err r68 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r45 err err r45 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r57 err r57 err r57 err s137 r57 s138 err err r57 r57 err r57 r57 r57 err err err err err err err err err err err err r57 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r63 err r63 err r63 r63 r63 r63 r63 r63 err r63 r63 err r63 r63 r63 err err err err err err err err err err err err r63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+s139 err r49 err r49 err err r49 err err err err err err s140 err err err err err err err err err err err err err err r49 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r60 err r60 err r60 s141 r60 r60 r60 s142 err r60 r60 err r60 r60 r60 err err err err err err err err err err err err r60 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r70 err r70 s86 err r70 r70 r70 r70 r70 r70 r70 r70 err r70 r70 r70 err err err err err err err err err s143 err err r70 err err err err 144 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r64 err r64 err err r64 r64 r64 r64 r64 r64 r64 r64 err r64 r64 r64 err err err err err err err err err err err err r64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r65 err r65 err err r65 r65 r65 r65 r65 r65 r65 r65 err r65 r65 r65 err err err err err err err err err err err err r65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 s145 err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 75 err err 77 err err err err err 146 147 79 err err 80 err 81 err err err 82 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 148 err 44 err err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 156 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+r71 err r71 err err r71 r71 r71 r71 r71 r71 r71 r71 s162 r71 r71 r71 err err err err err err err err err err err err r71 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 163 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err r39 err err r39 err r39 err r39 err err err err err err err err r39 r39 err r39 r39 err r39 err err r39 err r39 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s164 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 165 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err err err err 47 err err err err err err err 51 err err 52 err 166 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err err err err 47 err err err err err err err 51 err err 52 err 167 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err err err err 47 err err err err err err err 51 err err 52 err 168 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err err err err 47 err err err err err err err 51 err err 52 err 169 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 42 err 44 170 err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err 44 err err 47 err err err err err 171 err 51 err err 52 err 53 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err 44 err err 47 err err err err err 172 err 51 err err 52 err 53 err err err 57 err err err 
+err err err r35 err err r35 err r35 err r35 err err err err err err err err r35 r35 err r35 r35 err r35 err err r35 err r35 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 173 41 err err err err err err err 47 err err err err err err err 51 err err 52 err err err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 174 41 err err err err err err err 47 err err err err err err err 51 err err 52 err err err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err 175 err err 47 err err err err err err err 51 err err 52 err 53 err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err 40 41 err err err err 176 err err 47 err err err err err err err 51 err err 52 err 53 err err err 57 err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err r28 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err r21 err err err err err err err err err err err err err err err err r21 err err r21 err err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err err 41 err err err err err err err 47 err err err err err err err 177 err err 52 err err err err err 57 err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s83 err err s37 err err err err err err err err err 41 err err err err err err err 47 err err err err err err err 178 err err 52 err err err err err 57 err err err 
+err err err r24 err err r24 err r24 err r24 err err err err err err err err r24 r24 err r24 r24 err r24 err err r24 err r24 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s179 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err r20 err err err err err err err err err err err err err err err err r20 err err r20 err err r20 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s180 err err err err err err err err err err err err err err err s21 err err err err err err 181 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s182 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s61 err s184 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 183 57 err err err 
+err err err r19 err err r19 err r19 err r19 err err err err err err err err r19 r19 err r19 r19 err r19 err err r19 err r19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r16 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err s185 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r18 err err r18 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err r9 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s186 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r70 err r70 s125 r70 r70 r70 r70 r70 r70 err r70 r70 err r70 r70 r70 err err err err err err err err err s187 err err r70 err err err err 188 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r64 err r64 err r64 r64 r64 r64 r64 r64 err r64 r64 err r64 r64 r64 err err err err err err err err err err err err r64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r65 err r65 err r65 r65 r65 r65 r65 r65 err r65 r65 err r65 r65 r65 err err err err err err err err err err err err r65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 s189 err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 75 err err 77 err err err err err 146 190 79 err err 80 err 81 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 191 err 75 err err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 192 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+r71 err r71 err r71 r71 r71 r71 r71 r71 err r71 r71 s193 r71 r71 r71 err err err err err err err err err err err err r71 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err err err err 77 err err err err err err err 79 err err 80 err 194 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err err err err 77 err err err err err err err 79 err err 80 err 195 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err err err err 77 err err err err err err err 79 err err 80 err 196 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err err err err 77 err err err err err err err 79 err err 80 err 197 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 198 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 75 err err 77 err err err err err 199 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 75 err err 77 err err err err err 200 err 79 err err 80 err 81 err err err 82 err err err 
+r69 err r69 err err r69 r69 r69 r69 r69 r69 r69 r69 err r69 r69 r69 err err err err err err err err err err err err r69 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 201 73 err err err err err err err 77 err err err err err err err 79 err err 80 err err err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 202 73 err err err err err err err 77 err err err err err err err 79 err err 80 err err err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 203 err err 77 err err err err err err err 79 err err 80 err 81 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 204 err err 77 err err err err err err err 79 err err 80 err 81 err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err err 73 err err err err err err err 77 err err err err err err err 205 err err 80 err err err err err 82 err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err err 73 err err err err err err err 77 err err err err err err err 206 err err 80 err err err err err 82 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 207 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+r71 err r71 err err r71 r71 r71 r71 r71 r71 r71 r71 err r71 r71 r71 err err err err err err err err err err err err r71 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r72 err r72 err err r72 r72 r72 r72 r72 r72 r72 r72 err r72 r72 r72 err err err err err err err err err err err err r72 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r74 err err s208 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s209 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err r43 err err r43 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 210 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err s149 err err err err err err err err err err err err err err err s152 err err s153 err err err err err err err err err 155 err err err err err err err 157 err err err err err err err err err err 211 err err err err err err err err err 
+err err err s149 err err err err err err err err err err err err err err err s152 err err s153 err err err err err err err err err 155 err err err err err err err 157 err err err err err err err err err err 212 err err err err err err err err err 
+r70 err err s213 err r70 r70 err r70 r70 err r70 r70 err r70 r70 r70 err err err err err err err err err s214 r70 err err err err err err 215 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r67 err err err err r67 r67 err r67 r67 err r67 r67 err r67 r67 r67 err err err err err err err err err err r67 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r52 err err err err err err err err err err s216 s217 err r52 s218 s219 err err err err err err err err err err r52 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r66 err err err err r66 r66 err r66 r66 err r66 r66 err r66 r66 r66 err err err err err err err err err err r66 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s220 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r68 err err err err r68 r68 err r68 r68 err r68 r68 err r68 r68 r68 err err err err err err err err err err r68 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r57 err err err err err s221 err s222 err err r57 r57 err r57 r57 r57 err err err err err err err err err err r57 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r63 err err err err r63 r63 err r63 r63 err r63 r63 err r63 r63 r63 err err err err err err err err err err r63 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+s223 err err err err err err err err err err err err err s224 err err err err err err err err err err err err r49 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r60 err err err err s225 r60 err r60 s226 err r60 r60 err r60 r60 r60 err err err err err err err err err err r60 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err err err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 227 err 44 err err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 err err err 
+err err err err s228 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r40 err err r40 err r40 err r40 err err err err err err err err r40 r40 err r40 r40 err r40 err err r40 err r40 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s229 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r53 err r53 err err err err r53 err err r53 err err err r53 err err err err err err err err err err err err err err r53 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r55 err r55 err err err err r55 err err r55 err err err r55 err err err err err err err err err err err err err err r55 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r54 err r54 err err err err r54 err err r54 err err err r54 err err err err err err err err err err err err err err r54 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r56 err r56 err err err err r56 err err r56 err err err r56 err err err err err err err err err err err err err err r56 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err r42 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err r47 err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err r48 err err r48 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r58 err r58 err err err err r58 err err r58 r58 r58 err r58 r58 r58 err err err err err err err err err err err err r58 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r59 err r59 err err err err r59 err err r59 r59 r59 err r59 r59 r59 err err err err err err err err err err err err r59 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err r51 err err err err r51 err err r51 err err err err err err err err err err err err err err err err err err r51 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err r50 err err err err r50 err err r50 err err err err err err err err err err err err err err err err err err r50 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r61 err r61 err err err r61 r61 r61 err r61 r61 r61 err r61 r61 r61 err err err err err err err err err err err err r61 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r62 err r62 err err err r62 r62 r62 err r62 r62 r62 err r62 r62 r62 err err err err err err err err err err err err r62 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err r22 err err err err err err err err err err err err err err err err r22 err err r22 err err r22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r25 err err r25 err r25 err r25 err err err err err err err r25 r25 r25 r25 r25 r25 r25 r25 err err r25 err r25 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s230 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r21 err err r21 err r21 err r21 err err err err err err err err r21 r21 err r21 r21 err r21 err err r21 err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s231 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r20 err err r20 err r20 err r20 err err err err err err err err r20 r20 err r20 r20 err r20 err err r20 err r20 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s232 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r69 err r69 err r69 r69 r69 r69 r69 r69 err r69 r69 err r69 r69 r69 err err err err err err err err err err err err r69 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 233 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+r71 err r71 err r71 r71 r71 r71 r71 r71 err r71 r71 err r71 r71 r71 err err err err err err err err err err err err r71 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r72 err r72 err r72 r72 r72 r72 r72 r72 err r72 r72 err r72 r72 r72 err err err err err err err err err err err err r72 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s234 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r43 err err r43 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s235 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 236 err 75 err err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+r53 err r53 err r53 err err r53 err err err err err err r53 err err err err err err err err err err err err err err r53 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r55 err r55 err r55 err err r55 err err err err err err r55 err err err err err err err err err err err err err err r55 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r54 err r54 err r54 err err r54 err err err err err err r54 err err err err err err err err err err err err err err r54 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r56 err r56 err r56 err err r56 err err err err err err r56 err err err err err err err err err err err err err err r56 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r42 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r47 err err r47 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r48 err err r48 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r58 err r58 err r58 err err r58 err err err r58 r58 err r58 r58 r58 err err err err err err err err err err err err r58 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r59 err r59 err r59 err err r59 err err err r59 r59 err r59 r59 r59 err err err err err err err err err err err err r59 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err r51 err r51 err err r51 err err err err err err err err err err err err err err err err err err err err err r51 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err r50 err r50 err err r50 err err err err err err err err err err err err err err err err err err err err err r50 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r61 err r61 err r61 err r61 r61 r61 err err r61 r61 err r61 r61 r61 err err err err err err err err err err err err r61 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r62 err r62 err r62 err r62 r62 r62 err err r62 r62 err r62 r62 r62 err err err err err err err err err err err err r62 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s237 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 75 err err 77 err err err err err 146 238 79 err err 80 err 81 err err err 82 err err err 
+r73 err r73 err err r73 r73 r73 r73 r73 r73 r73 r73 err r73 r73 r73 err err err err err err err err err err err err r73 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s239 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r64 err err err err r64 r64 err r64 r64 err r64 r64 err r64 r64 r64 err err err err err err err err err err r64 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r65 err err err err r65 r65 err r65 r65 err r65 r65 err r65 r65 r65 err err err err err err err err err err r65 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 s240 err s68 err s69 err err err err err err err err err err s122 err err s71 err err err err err err err err 72 73 err err err err 75 err err 77 err err err err err 146 241 79 err err 80 err 81 err err err 82 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 242 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+r71 err err err err r71 r71 err r71 r71 err r71 r71 err r71 r71 r71 err err err err err err err err err err r71 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err err err err 157 err err err err err err err 158 err err 159 err 243 err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err err err err 157 err err err err err err err 158 err err 159 err 244 err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err err err err 157 err err err err err err err 158 err err 159 err 245 err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err err err err 157 err err err err err err err 158 err err 159 err 246 err err err 161 err err err 
+r12 err r12 err err r12 r12 r12 r12 r12 r12 r12 r12 r12 r12 r12 r12 err err err err err err err err err s88 err err r12 err err err err 247 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 248 155 err err err err err err err 157 err err err err err err err 158 err err 159 err err err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 249 155 err err err err err err err 157 err err err err err err err 158 err err 159 err err err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 250 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err 154 155 err err err err 251 err err 157 err err err err err err err 158 err err 159 err 160 err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err err 155 err err err err err err err 157 err err err err err err err 252 err err 159 err err err err err 161 err err err 
+err err err s149 err err s150 err s151 err err err err err err err err err err s152 err err s153 err err err err err err err err err 155 err err err err err err err 157 err err err err err err err 253 err err 159 err err err err err 161 err err err 
+err err err err err err err r44 err err r44 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s254 err err err err err err err err s35 s255 err s37 s256 err s257 err err s265 err err 40 41 err err 42 258 44 259 260 47 err err err 261 262 50 err 51 err err 52 err 53 263 264 err 57 err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s61 err err 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 266 err 57 err err err 
+err err err r26 err err r26 err r26 err r26 err err err err err err err r26 r26 r26 r26 r26 r26 r26 r26 err err r26 err r26 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r22 err err r22 err r22 err r22 err err err err err err err err r22 r22 err r22 r22 err r22 err err r22 err r22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r10 err err r10 err err err err err err err err err err err err err err err err err err s118 err err err err err err 267 err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s268 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r73 err r73 err r73 r73 r73 r73 r73 r73 err r73 r73 err r73 r73 r73 err err err err err err err err err err err err r73 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r12 err r12 err r12 r12 r12 r12 r12 r12 err r12 r12 r12 r12 r12 r12 err err err err err err err err err s127 err err r12 err err err err 269 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r44 err err r44 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r12 err r12 err err r12 r12 r12 r12 r12 r12 r12 r12 err r12 r12 r12 err err err err err err err err err s143 err err r12 err err err err 270 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r75 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r69 err err err err r69 r69 err r69 r69 err r69 r69 err r69 r69 r69 err err err err err err err err err err r69 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r72 err err err err r72 r72 err r72 r72 err r72 r72 err r72 r72 r72 err err err err err err err err err err r72 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s271 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err s272 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r53 err err err err err err err err err err err err err r53 err err err err err err err err err err err err r53 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r55 err err err err err err err err err err err err err r55 err err err err err err err err err err err err r55 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r54 err err err err err err err err err err err err err r54 err err err err err err err err err err err err r54 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r56 err err err err err err err err err err err err err r56 err err err err err err err err err err err err r56 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r11 err r11 err err r11 r11 r11 r11 r11 r11 r11 r11 r11 r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r58 err err err err err err err err err err r58 r58 err r58 r58 r58 err err err err err err err err err err r58 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r59 err err err err err err err err err err r59 r59 err r59 r59 r59 err err err err err err err err err err r59 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err r51 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err r50 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r61 err err err err err r61 err r61 err err r61 r61 err r61 r61 r61 err err err err err err err err err err r61 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r62 err err err err err r62 err r62 err err r62 r62 err r62 r62 r62 err err err err err err err err err err r62 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r34 err err r34 err r34 err r34 err err err err err err r34 err r34 r34 err r34 r34 err r34 err err r34 err r34 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s273 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s274 err err err err err err err err s35 err err s37 err err err err err err err err 40 41 err err 42 err 44 275 err 47 err err err err err 50 err 51 err err 52 err 53 err err err 57 err err err 
+err err err s276 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r29 err err r29 err r29 err r29 err err err err err err r29 err r29 r29 err r29 r29 err r29 err err r29 err r29 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s277 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r30 err err r30 err r30 err r30 err err err err err err r30 err r30 r30 err r30 r30 err r30 err err r30 err r30 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r32 err err r32 err r32 err r32 err err err err err err r32 err r32 r32 err r32 r32 err r32 err err r32 err r32 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r33 err err r33 err r33 err r33 err err err err err err r33 err r33 r33 err r33 r33 err r33 err err r33 err r33 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r31 err err r31 err r31 err r31 err err err err err err r31 err r31 r31 err r31 r31 err r31 err err r31 err r31 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r36 err err r36 err r36 err r36 err err err err err err s278 err r36 r36 err r36 r36 err r36 err err r36 err r36 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err s1 s35 s36 s2 s37 s38 s3 s39 err err s61 err s281 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 279 57 58 280 60 
+err err err r38 err err r38 err r38 err r38 err err err err err err err err r38 r38 err r38 r38 err r38 err err r38 err r38 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err r9 err err r9 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r12 err r12 err r12 r12 r12 r12 r12 r12 err r12 r12 err r12 r12 r12 err err err err err err err err err s187 err err r12 err err err err 282 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r11 err r11 err r11 r11 r11 r11 r11 r11 err r11 r11 r11 r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r11 err r11 err err r11 r11 r11 r11 r11 r11 r11 r11 err r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r73 err err err err r73 r73 err r73 r73 err r73 r73 err r73 r73 r73 err err err err err err err err err err r73 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r12 err err err err r12 r12 err r12 r12 err r12 r12 err r12 r12 r12 err err err err err err err err err s214 r12 err err err err err err 283 err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 284 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err r39 err err r39 err r39 err r39 err err err err err err r39 err r39 r39 err r39 r39 err r39 err err r39 err r39 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err s285 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s67 err err s68 err s69 err err err err err err err err err err s70 err err s71 err err err err err err err err 72 73 err err 74 err 75 286 err 77 err err err err err 78 err 79 err err 80 err 81 err err err 82 err err err 
+err err err r35 err err r35 err r35 err r35 err err err err err err r35 err r35 r35 err r35 r35 err r35 err err r35 err r35 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s61 err err 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 287 err 57 err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s288 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s34 err err err err err err err err s35 s36 err s37 s38 err s39 err err s61 err s290 40 41 err err 42 43 44 45 46 47 err err err 48 49 50 err 51 err err 52 err 53 54 55 289 57 err err err 
+err err err r19 err err r19 err r19 err r19 err err err err err err r19 err r19 r19 err r19 r19 err r19 err err r19 err r19 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r11 err r11 err r11 r11 r11 r11 r11 r11 err r11 r11 err r11 r11 r11 err err err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+r11 err err err err r11 r11 err r11 r11 err r11 r11 err r11 r11 r11 err err err err err err err err err err r11 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s291 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r40 err err r40 err r40 err r40 err err err err err err r40 err r40 r40 err r40 r40 err r40 err err r40 err r40 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err s292 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r37 err err r37 err r37 err r37 err err err err err err err err r37 r37 err r37 r37 err r37 err err r37 err r37 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r21 err err r21 err r21 err r21 err err err err err err r21 err r21 r21 err r21 r21 err r21 err err r21 err r21 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err s293 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r20 err err r20 err r20 err r20 err err err err err err r20 err r20 r20 err r20 r20 err r20 err err r20 err r20 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s254 err err err err err err err err s35 s255 err s37 s256 err s257 err err s265 err err 40 41 err err 42 258 44 259 260 47 err err err 261 262 50 err 51 err err 52 err 53 263 294 err 57 err err err 
+err err err s31 err err s32 err s33 err s254 err err err err err err err err s35 s255 err s37 s256 err s257 err err s265 err err 40 41 err err 42 258 44 259 260 47 err err err 261 262 50 err 51 err err 52 err 53 263 295 err 57 err err err 
+err err err r22 err err r22 err r22 err r22 err err err err err err r22 err r22 r22 err r22 r22 err r22 err err r22 err r22 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r36 err err r36 err r36 err r36 err err err err err err s296 err r36 r36 err r36 r36 err r36 err err r36 err r36 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err r38 err err r38 err r38 err r38 err err err err err err r38 err r38 r38 err r38 r38 err r38 err err r38 err r38 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
+err err err s31 err err s32 err s33 err s254 err err err err err err err err s35 s255 err s37 s256 err s257 err err s265 err err 40 41 err err 42 258 44 259 260 47 err err err 261 262 50 err 51 err err 52 err 53 263 297 err 57 err err err 
+err err err r37 err err r37 err r37 err r37 err err err err err err r37 err r37 r37 err r37 r37 err r37 err err r37 err r37 err err err err err err err err err err err err err err err err err err err err err err err err err err err err err err 
 `;
 
-const LRtitle = `!=                                   #                                  &&                                   (                                   )                                   *                                   +                                   ,                                   -                                   /                                   ;                                   <                                  <=                                   =                                  ==                                   >                                  >=                                ELSE                               FLOAT                                  ID                                  IF                                 INT                                 NUM                              RETURN                                VOID                               WHILE                                   [                                   ]                                   {                                  ||                                   }@                 additive_expression               addressing_expression                       array_closure            array_expression_closure               assignment_expression                  compound_statement                 equality_expression                          expression                expression_statement                       function_call                function_declaration                 function_definition            function_definition_list                 iteration_statement                      jump_statement                  logical_expression             logical_expression_list           multiplicative_expression               parameter_declaration                      parameter_list                  primary_expression                             program               relational_expression                 selection_statement                           statement                      statement_list                    unary_expression                      unary_operator                 variable_definition            variable_definition_list                       variable_type`;
+const LRtitle = `!=                                   #                                  &&                                   (                                   )                                   *                                   +                                   ,                                   -                                   /                                   ;                                   <                                  <=                                   =                                  ==                                   >                                  >=                                ELSE                               FLOAT                                  ID                                  IF                                 INT                                 NUM                              RETURN                                VOID                               WHILE                                   [                                   ]                                   {                                  ||                                   }@                 additive_expression               addressing_expression                       array_closure            array_expression_closure               assignment_expression                  compound_statement                 equality_expression                          expression                expression_statement                       function_call                function_declaration                 function_definition            function_definition_list                 iteration_statement                      jump_statement                  logical_expression             logical_expression_list           multiplicative_expression               parameter_declaration                      parameter_list                  primary_expression                             program               relational_expression                 selection_statement                           statement                      statement_list                    unary_expression                 variable_definition            variable_definition_list                       variable_type`;
 
 const grammarStr = `program' -> program
 program -> function_definition_list
@@ -710,11 +847,9 @@ jump_statement -> RETURN ;
 jump_statement -> RETURN expression ;
 expression -> assignment_expression
 expression -> assignment_expression , expression
-assignment_expression -> addressing_expression = assignment_expression
+assignment_expression -> ID = assignment_expression
+assignment_expression -> ID array_expression_closure = assignment_expression
 assignment_expression -> logical_expression
-assignment_expression -> addressing_expression
-addressing_expression -> ID
-addressing_expression -> ID array_expression_closure
 logical_expression -> equality_expression
 logical_expression -> equality_expression && logical_expression
 logical_expression -> equality_expression || logical_expression
@@ -733,13 +868,14 @@ multiplicative_expression -> unary_expression
 multiplicative_expression -> unary_expression * multiplicative_expression
 multiplicative_expression -> unary_expression / multiplicative_expression
 unary_expression -> primary_expression
-unary_expression -> unary_operator unary_expression
+unary_expression -> + primary_expression
+unary_expression -> - primary_expression
 primary_expression -> addressing_expression
 primary_expression -> NUM
 primary_expression -> function_call
 primary_expression -> ( expression )
-unary_operator -> +
-unary_operator -> -
+addressing_expression -> ID
+addressing_expression -> ID array_expression_closure
 function_call -> ID ( )
 function_call -> ID ( logical_expression_list )
 logical_expression_list -> logical_expression

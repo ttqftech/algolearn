@@ -16,7 +16,7 @@ void main() {
     while (i <= 6)
     {
         // 将 所 有 球 放 到 对 应 序 号 的 盒 子 里 去
-        value = array[i];
+        value = ball[i];
         bucket[value] = value;
         i = i + 1;
     }
@@ -27,10 +27,11 @@ void main() {
     {
         if (bucket[i] != -1)
         {
-            print(bucket[i]);
+            print2Buffer(bucket[i]);
         }
         i = i + 1;
     }
+    alert();
 }
 `
 

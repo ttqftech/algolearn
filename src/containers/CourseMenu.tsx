@@ -17,7 +17,7 @@ class CourseMenu extends React.Component<Props, State> {
 	constructor(props: Props | Readonly<Props>) {
 		super(props);
 		this.state = {
-			width: 296,
+			width: 260,
 			selectedChapter: -1,
 		};
 	}

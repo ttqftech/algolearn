@@ -2,7 +2,7 @@ import React from "react";
 // import { findDOMNode } from "react-dom";
 import { CodeService, CodeServiceEvent } from "../core/CodeService";
 import { CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
-import { getCharPosFromCodeChar, getWindowOffsetLeft, getWindowOffsetTop } from "../utils";
+import { getCharPosFromCodeChar } from "../utils";
 import './CodeEditor.scss'
 
 const CW = 8;		// 每字符宽度
@@ -26,7 +26,7 @@ interface State {
 		};
 		message?: string;
 	}
-	runningLine?: number;
+	runningPos?: CodePosition;
 }
 
 class CodeEditor extends React.Component<Props, State> {
@@ -47,7 +47,7 @@ class CodeEditor extends React.Component<Props, State> {
 			codeareaSize: {
 				width: 0,
 			},
-			runningLine: -1,
+			runningPos: undefined,
 		};
 		this.codeService = new CodeService();
 		(window as any).codeService = this.codeService;
@@ -79,11 +79,11 @@ class CodeEditor extends React.Component<Props, State> {
 		this.codeService.on(CodeServiceEvent.CodeUpdated, () => {
 			// 代码更新，刷新显示
 			this.setState({});
-		})
+		});
 		this.codeService.on(CodeServiceEvent.LexicalReady, () => {
 			// 词法分析结束，刷新代码高亮
 			this.setState({});
-		})
+		});
 		this.codeService.on(CodeServiceEvent.GrammarReady, (errorToken: Token | undefined, message?: string) => {
 			// 语法分析结束，如果有错误，那么 errorToken 指示错误位置，需要在界面上指示出来
 			if (errorToken) {
@@ -103,7 +103,7 @@ class CodeEditor extends React.Component<Props, State> {
 							ln: codePosition.ln,
 							col: codePosition.col,
 						},
-						message: '语法错误',
+						message,
 					}
 				});
 			} else {
@@ -111,7 +111,12 @@ class CodeEditor extends React.Component<Props, State> {
 					syntaxError: undefined
 				});
 			}
-		})
+		});
+		this.codeService.on(CodeServiceEvent.RuntimeReset, () => {
+			this.setState({
+				runningPos: undefined
+			});	
+		});
 	}
 
 	/**
@@ -334,11 +339,21 @@ class CodeEditor extends React.Component<Props, State> {
 		document.body.addEventListener('mouseup', upListener);
 	}
 
+	/**
+	 * 响应“单步”按钮
+	 */
 	onStepClick() {
 		this.codeService.step();
 		this.setState({
-			runningLine: this.codeService.getCurrentLine()
+			runningPos: this.codeService.getRunningPos()
 		});
+	}
+
+	/**
+	 * 响应“重启”按钮
+	 */
+	onResetClick() {
+		this.codeService.reset();
 	}
 
 	/**
@@ -356,10 +371,10 @@ class CodeEditor extends React.Component<Props, State> {
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
 				<div className="controller">
 					<button onClick={this.onStepClick.bind(this)}>单步</button>
-					<button onClick={this.onStepClick.bind(this)}>重启</button>
+					<button onClick={this.onResetClick.bind(this)}>重启</button>
 				</div>
 				<div className="editor">
-					<div className="linepointer" style={{ width: this.state.codeareaSize.width, top: (this.state.runningLine || -1) * CH }}></div>
+					<div className="linepointer" style={{ top: (this.state.runningPos?.ln || -1) * CH }}></div>
 					<div className="lnarea">
 						{this.codeService.getCodeLines().map((codeLine, ln) => {
 							return (
@@ -368,16 +383,21 @@ class CodeEditor extends React.Component<Props, State> {
 						})}
 					</div>
 					<div className="codearea" ref={div => this.codeareaElemRef = div}>
-						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} style={{ width: this.state.codeareaSize.width }} />
+						<textarea className="opmask" onFocus={() => this.onEditorFocused(true)} onBlur={() => this.onEditorFocused(false)} onInput={this.onInput.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onMouseMove={this.onMaskMouseMove.bind(this)} onMouseDown={this.onMaskDragStart.bind(this)} onMouseUp={this.onMaskDragEnd.bind(this)} style={{ width: this.state.codeareaSize.width }} disabled={!!this.state.runningPos} />
 						<div className="pointer" style={{ display: this.state.focused ? 'unset' : 'none', left: `${this.state.pointerPos.col * CW + 3}px`, top: `${this.state.pointerPos.ln * CH}px` }} ref={div => this.pointerElemRef = div} />
 						<CodeLinesComp codeService={this.codeService}></CodeLinesComp>
+						{this.state.runningPos ? (
+						<div className="runningpointer" style={{ left: (this.state.runningPos.col + 0.5) * CW + 4, top: (this.state.runningPos.ln + 1) * CH }}>
+							<div className="triangle"></div>
+						</div>
+					) : null}
 					</div>
 					{this.state.syntaxError ? (
-							<div className="syntaxerror" style={{ left: (this.state.syntaxError.position.col + 0.5) * CW + 40, top: (this.state.syntaxError.position.ln + 1) * CH }}>
-								<div className="triangle"></div>
-								<div className="message">{this.state.syntaxError.message}</div>
-							</div>
-						) : null}
+						<div className="syntaxerror" style={{ left: (this.state.syntaxError.position.col + 0.5) * CW + 40, top: (this.state.syntaxError.position.ln + 1) * CH }}>
+							<div className="triangle"></div>
+							<div className="message">{this.state.syntaxError.message || '语法错误'}</div>
+						</div>
+					) : null}
 				</div>
 				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}>
 					<div className="draggerimg"></div>
