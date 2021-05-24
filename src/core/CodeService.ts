@@ -3,7 +3,6 @@ import { BaseNode, CodeChar, CodeCharWrapper, CodeLine, CodePosition, FunctionNo
 import { mid } from "../utils";
 import { collectFunctionVariable, getVariableTypeBySyntaxNode, GrammarAnalysis, createVariable, setVariable, getVariable, applyFunctionParameter, attractFunctionParameter } from "./GrammarAnalysis";
 import { LexicalAnalysis } from "./LexicalAnalysis";
-// import { LexicalAnalysis } from "./LexicalAnalysis";
 
 export enum CodeServiceEvent {
 	CodeUpdated = 'CodeUpdated',
@@ -141,6 +140,9 @@ export class CodeService extends EventEmitter {
 			[endlineChar]
 		];
 		this.insertCode(content, 0, 0);
+		if (this.currentBaseNode || this.currentCallStack || this.currentSyntaxNode) {
+			this.reset(false);
+		}
 	}
 
 	/**
@@ -908,13 +910,15 @@ export class CodeService extends EventEmitter {
 	/**
 	 * 重置任务运行状态
 	 */
-	public reset(): void {
+	public reset(reCompile: boolean = true): void {
 		this.currentSyntaxNode = undefined;
 		this.currentBaseNode = undefined;
 		this.currentCallStack = [];
 		this.printBuffer = '';
 		this.emit(CodeServiceEvent.RuntimeReset);
-		this.compile();
+		if (reCompile) {
+			this.compile();
+		}
 	}
 
 	/**

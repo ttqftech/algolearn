@@ -363,11 +363,8 @@ class CodeEditor extends React.Component<Props, State> {
 		let me = this;
 		let beginTimer = setTimeout(startsequenceClick, 500);
 		let clickTimer: any;
-		console.log('down');
 		function startsequenceClick() {
-			console.log('start');
 			clickTimer = setInterval(() => {
-				console.log('click');
 				me.onStepClick();
 			}, 66);
 		}

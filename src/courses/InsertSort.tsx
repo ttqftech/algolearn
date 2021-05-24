@@ -7,9 +7,11 @@ const baseCode = `\
 void main() {
     int ball[7];
     int box[7];
-    int i; int j; int pos;
-    int z; // 用 于 输 出 
-    int breakJFlag;
+    int i;           // i 代 表 拿 起 序 号 为  i 的 球 
+    int j;           // j 代 表 要 插 入 的 位 置 
+    int pos;         // pos 代 表 从 后 往 前 腾 出 空 间 的 指 针 
+    int z;           // 用 于 输 出 
+    int breakJFlag;  // 插 入 完 成 后 置  1， 用 于 跳 出 循 环 
     int value;
     ball[0] = 52; ball[1] = 79; ball[2] = 24; ball[3] = 7; ball[4] = 13; ball[5] = 97; ball[6] = 47;
 
@@ -17,9 +19,8 @@ void main() {
     i = 0; j = 0;
     while (i <= 6)
     {
-        // 一 层 循 环 ： 拿 起  ball[i]（ i 代 表 拿 起 序 号 为  i 的 球 ） 
+        // 一 层 循 环 ： 拿 起  ball[i]
         value = ball[i];
-        // j 代 表 要 插 入 的 位 置 
         j = 0;
         breakJFlag = 0;
         while (j < i && breakJFlag == 0)
@@ -28,7 +29,6 @@ void main() {
             if (box[j] >= value || j > i)
             {
                 // 将 后 面 的 所 有 球 都 后 移 一 位 ， 腾 出 空 间    
-                // pos 代 表 从 后 往 前 腾 出 空 间 的 指 针 
                 pos = i;
                 while (pos >= j)
                 {
