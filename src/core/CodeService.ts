@@ -9,6 +9,7 @@ export enum CodeServiceEvent {
 	CodeUpdated = 'CodeUpdated',
 	LexicalReady = 'LexicalReady',
 	GrammarReady = 'GrammarReady',
+	ProgramNodeReady = 'ProgramNodeReady',
 	RuntimeReset = 'RuntimeReset',
 }
 
@@ -317,6 +318,13 @@ export class CodeService extends EventEmitter {
 	}
 
 	/**
+	 * 从 GrammarAnalysis 获取 ProgramNode
+	 */
+	public getProgramNode(): ProgramNode | undefined {
+		return this.grammarAnalyzer.getProgramNode();
+	}
+
+	/**
 	 * 编译
 	 */
 	public compile(): void {
@@ -354,6 +362,7 @@ export class CodeService extends EventEmitter {
 			let programNode = this.grammarAnalyzer.semanticAnalyze();
 			console.log('programNode', programNode, `变量表分析耗时：${new Date().getTime() - startTime} ms`);
 		}
+		this.emit(CodeServiceEvent.ProgramNodeReady, this.grammarAnalyzer.getProgramNode());
 	}
 
 	/**
@@ -364,7 +373,7 @@ export class CodeService extends EventEmitter {
 		let baseNode = this.currentBaseNode;
 		let stopflag: boolean = false;
 
-		console.log('step', syntaxNode?.symbol, syntaxNode?.value, syntaxNode?.token);
+		// console.log('step', syntaxNode?.symbol, syntaxNode?.value, syntaxNode?.token);
 		if (!syntaxNode) {
 			// 程序开始运行
 			this.currentSyntaxNode = this.grammarAnalyzer.getSyntaxTree();
@@ -887,10 +896,10 @@ export class CodeService extends EventEmitter {
 		}
 		if (this.currentSyntaxNode === syntaxNode?.parent) {
 			syntaxNode!.executeIndex = undefined;	// 清除执行记录，以便 while 语句重复计算
-			console.log('↑');
+			// console.log('↑');
 		}
 		if (stopflag) {
-			console.log('STOP');
+			// console.log('STOP');
 		} else {
 			this.step();
 		}

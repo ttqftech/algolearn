@@ -53,8 +53,8 @@
 	}
 	.menu {
 		position: absolute;
-		left: Max(calc(20% - 64px), 0px);
-		right: Max(calc(20% - 64px), 0px);
+		left: Max(calc(20% - 64px), 0.01px);
+		right: Max(calc(20% - 64px), 0.01px);
 		bottom: 0;
 		transition: top cubic-bezier(0.15, 0.4, 0.5, 1) 0.5s;
 		overflow: hidden;

@@ -1,7 +1,7 @@
 import React from "react";
 // import { findDOMNode } from "react-dom";
 import { CodeService, CodeServiceEvent } from "../core/CodeService";
-import { CodeCharWrapper, CodeLine, CodePosition, Token, TokenType } from "../types/types";
+import { CodeCharWrapper, CodeLine, CodePosition, ProgramNode, Token, TokenType } from "../types/types";
 import { getCharPosFromCodeChar } from "../utils";
 import './CodeEditor.scss'
 
@@ -10,6 +10,7 @@ const CH = 20;		// 每行高度
 
 interface Props {
 	onRef: (_this: CodeEditor) => void;
+	onProgramNodeUpdate: (programNode: ProgramNode | undefined) => void;
 }
 
 interface State {
@@ -112,6 +113,10 @@ class CodeEditor extends React.Component<Props, State> {
 				});
 			}
 		});
+		this.codeService.on(CodeServiceEvent.ProgramNodeReady, (progranNode: ProgramNode) => {			
+			// 传至上层
+			this.props.onProgramNodeUpdate(progranNode);
+		})
 		this.codeService.on(CodeServiceEvent.RuntimeReset, () => {
 			this.setState({
 				runningPos: undefined
@@ -347,6 +352,31 @@ class CodeEditor extends React.Component<Props, State> {
 		this.setState({
 			runningPos: this.codeService.getRunningPos()
 		});
+		// 传至上层
+		this.props.onProgramNodeUpdate(this.codeService.getProgramNode());
+	}
+
+	/**
+	 * 响应“单步”按钮长按
+	 */
+	onStepDown() {
+		let me = this;
+		let beginTimer = setTimeout(startsequenceClick, 500);
+		let clickTimer: any;
+		console.log('down');
+		function startsequenceClick() {
+			console.log('start');
+			clickTimer = setInterval(() => {
+				console.log('click');
+				me.onStepClick();
+			}, 66);
+		}
+		let upListener = (ev: MouseEvent) => {
+			document.body.removeEventListener('mouseup', upListener);
+			clearInterval(beginTimer);
+			clearInterval(clickTimer);
+		}
+		document.body.addEventListener('mouseup', upListener);
 	}
 
 	/**
@@ -354,6 +384,8 @@ class CodeEditor extends React.Component<Props, State> {
 	 */
 	onResetClick() {
 		this.codeService.reset();
+		// 传至上层
+		this.props.onProgramNodeUpdate(this.codeService.getProgramNode());
 	}
 
 	/**
@@ -370,7 +402,7 @@ class CodeEditor extends React.Component<Props, State> {
 		return (
 			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
 				<div className="controller">
-					<button onClick={this.onStepClick.bind(this)}>单步</button>
+					<button onClick={this.onStepClick.bind(this)} onMouseDown={this.onStepDown.bind(this)}>单步</button>
 					<button onClick={this.onResetClick.bind(this)}>重启</button>
 				</div>
 				<div className="editor">

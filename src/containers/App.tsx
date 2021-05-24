@@ -1,6 +1,6 @@
 import React from 'react';
 import logo from '../others/logo.svg';
-import { CourseIndex } from '../types/types';
+import { CourseIndex, ProgramNode } from '../types/types';
 import CourseMenu from './CourseMenu';
 
 import { getCourseByChapterIndex, getCourseElemByChapterIndex } from "../courses/CourseLoader";
@@ -13,6 +13,7 @@ interface State {
 	courseIndex?: CourseIndex;
 	courseRef?: BaseCourse;
 	codeEditorRef?: CodeEditor;
+	programNode?: ProgramNode;
 }
 
 class App extends React.Component<{}, State> {
@@ -43,6 +44,15 @@ class App extends React.Component<{}, State> {
 	}
 
 	/**
+	 * ProgramNode 更新后触发
+	 */
+	handleProgramNodeUpdated(programNode: ProgramNode | undefined): void {
+		this.setState({
+			programNode
+		});
+	}
+
+	/**
 	 * 课程加载完成后由子组件 onRef 触发
 	 */
 	bindCourseRef(ref: BaseCourse) {
@@ -64,6 +74,7 @@ class App extends React.Component<{}, State> {
 		let SelectedCourse: React.CElement<{}, React.Component<{}, any, any>>;
 		SelectedCourse = getCourseElemByChapterIndex(this.state.courseIndex, {
 			onRef: this.bindCourseRef.bind(this) as any,
+			programNode: this.state.programNode
 		});
 
 		return (
@@ -88,6 +99,7 @@ class App extends React.Component<{}, State> {
 							{/* <button onClick={this.handleClick.bind(this)}></button> */}
 							<CodeEditor
 								onRef={this.bindCodeEditorRef.bind(this)}
+								onProgramNodeUpdate={this.handleProgramNodeUpdated.bind(this)}
 							></CodeEditor>
 						</>
 					)}

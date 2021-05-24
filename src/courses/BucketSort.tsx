@@ -1,4 +1,4 @@
-import { BasicType, ProgramNode, Variable } from "../types/types";
+import { BasicType,Variable } from "../types/types";
 import { BaseCourse, BaseCourseProps } from "./BaseCourse";
 import './BaseCourse.scss';
 import './BucketSort.scss';
@@ -8,6 +8,7 @@ void main() {
     int ball[7];
     int bucket[16];
     int i;
+    int z; // 用 于 输 出 
     int value;
     ball[0] = 1; ball[1] = 4; ball[2] = 5; ball[3] = 2; ball[4] = 6; ball[5] = 7; ball[6] = 3;
 
@@ -22,19 +23,19 @@ void main() {
     }
 
     // 2. 输 出
-    i = 0;
-    while (i <= 15)
+    z = 0;
+    while (z <= 15)
     {
-        if (bucket[i] != -1)
+        if (bucket[z] != 0)
         {
-            print2Buffer(bucket[i]);
+            print2Buffer(bucket[z]);
         }
-        i = i + 1;
+        z = z + 1;
     }
     alert();
 }
 `
-
+/*
 const testProgramNode: ProgramNode = {
 	functionList: [
 		{
@@ -74,6 +75,7 @@ const testProgramNode: ProgramNode = {
 	variableList: [],
 	syntaxNode: null as any,
 }
+*/
 
 interface State {}
 
@@ -86,27 +88,37 @@ class BucketSort extends BaseCourse<BaseCourseProps, State> {
 		return baseCode;
 	}
 	render () {
-		let mainFunc = testProgramNode.functionList.find((functionList) => functionList.name === 'main');
-		let bucket, bucketTypeIsValid = false;
-		let ball, ballTypeIsValid = false;
-		let i: Variable | undefined, iTypeIsValid = false;
-		if (mainFunc) {
-			bucket = mainFunc.variableList.find((variableList) => variableList.name === 'bucket');
-			if (bucket?.type.basic === BasicType.integer && bucket.type.length?.length === 1) {
-				bucketTypeIsValid = true;
-			}
-			ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
-			if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
-				ballTypeIsValid = true;
-			}
-			i = mainFunc.variableList.find((variableList) => variableList.name === 'i');
-			if (i?.type.basic === BasicType.integer && !i.type.length) {
-				iTypeIsValid = true;
-			}
-		}
 		let display1: React.CElement<{}, React.Component<{}, any, any>>;
 		// ProgramNode 检查
-		if (testProgramNode) {
+		if (this.props.programNode) {
+			let mainFunc = this.props.programNode.functionList.find((functionList) => functionList.name === 'main');
+			let bucket, bucketTypeIsValid = false;
+			let ball, ballTypeIsValid = false;
+			let i: Variable | undefined, iTypeIsValid = false;
+			let z: Variable | undefined, zTypeIsValid = false;
+			let value: Variable | undefined, valueTypeIsValid = false;
+			if (mainFunc) {
+				bucket = mainFunc.variableList.find((variableList) => variableList.name === 'bucket');
+				if (bucket?.type.basic === BasicType.integer && bucket.type.length?.length === 1) {
+					bucketTypeIsValid = true;
+				}
+				ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
+				if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
+					ballTypeIsValid = true;
+				}
+				i = mainFunc.variableList.find((variableList) => variableList.name === 'i');
+				if (i?.type.basic === BasicType.integer && !i.type.length) {
+					iTypeIsValid = true;
+				}
+				z = mainFunc.variableList.find((variableList) => variableList.name === 'z');
+				if (z?.type.basic === BasicType.integer && !z.type.length) {
+					zTypeIsValid = true;
+				}
+				value = mainFunc.variableList.find((variableList) => variableList.name === 'value');
+				if (value?.type.basic === BasicType.integer && !value.type.length) {
+					valueTypeIsValid = true;
+				}
+			}
 			// main 函数检查
 			if (mainFunc) {
 				// 变量是否存在检查
@@ -119,13 +131,17 @@ class BucketSort extends BaseCourse<BaseCourseProps, State> {
 					} else {
 						let bucketArr = bucket.value as Array<number>;
 						let ballArr = ball.value as Array<number>;
+						let textDiv;
+						if (zTypeIsValid && z?.value !== undefined) {
+							textDiv = <span>正在输出：序号 {z.value}</span>
+						} else if (iTypeIsValid) {
+							textDiv = <span>第 {i?.value + 1} 次循环，把序号为 {i?.value} 的球放入序号为 {i?.value} 的格子里</span>;
+						} else {
+							textDiv = <span>i 用作取第 i 个球，z 用作输出序号，请在代码编辑器修正变量名</span>
+						}
 						display1 = (
 							<>
-								{iTypeIsValid ? (
-									<span>第 {i?.value + 1} 次循环，把序号为 {i?.value} 的球放入序号为 {i?.value} 的格子里</span>
-								) : (
-									<span>图形演示区</span>
-								)}
+								{textDiv}
 								{bucketArr.map((number, index) => {
 									return (
 										<div className="bucket" style={{ left: `${index * 48 + 24}px` }}>{index}</div>
@@ -133,15 +149,20 @@ class BucketSort extends BaseCourse<BaseCourseProps, State> {
 								})}
 								{ballArr.map((number, index) => {
 									let correspondingElement = bucketArr[number];
-									let position;
+									let position, flash;
 									if (correspondingElement && correspondingElement === number) {
 										position = {
 											left: `${number * 48 + 24}px`,
 											top: '128px',
 										};
 									}
+									if (valueTypeIsValid && value?.value === number) {
+										flash = {
+											animation: 'flashing1-1-1 0.5s ease-in 0s infinite alternate'
+										}
+									}
 									return (
-										<div className="ball" style={{ backgroundColor: `hsla(${number * 30}deg, 70%, 50%)`, left: `${index * 48 + 24}px`, ...position }}>{number}</div>
+										<div className="ball" style={{ backgroundColor: `hsla(${number * 30}deg, 70%, 50%)`, left: `${index * 48 + 24}px`, ...position, ...flash }}>{number}</div>
 									);
 								})}
 							</>
@@ -173,7 +194,7 @@ class BucketSort extends BaseCourse<BaseCourseProps, State> {
 						{display1}
 					</div>
 					<p>接下来的方案就十分简单了，将每个球放进对应序号的格子就行了，不妨在右侧运行试试？上面的图形演示区会马上看到效果。</p>
-					<p>在循环中，<pre>value = array[i]</pre>用于取出球的号码。<pre>bucket[value] = value</pre>用于将桶中对应序号的数字置为球的号码，即相当于把球放进去。最后，从左到右输出除了 -1 以外的数值，便是排序后的结果了。</p>
+					<p>在循环中，<pre>value = array[i]</pre>用于取出球的号码。<pre>bucket[value] = value</pre>用于将桶中对应序号的数字置为球的号码，即相当于把球放进去。最后，从左到右输出除了 0 以外的数值，便是排序后的结果了。</p>
 					<p>同理，如果我们要把更多的物体进行排序，只需要保证桶的数量大于等于物体就可以了。</p>
 					<p>我们可以看到，这是一个非常快的排序算法，只需要将所有数据遍历 2 遍就行了，第一遍将数据放入“桶”中，第二遍按顺序输出桶的内容，因此时间复杂度是<pre>O(n)</pre>。</p>
 					<p>桶排序从 1956 年就开始被使用了。该算法的基本思想是由 E.J.Issac 和 R.C.Singleton 提出来的。但其实这只是一个简化版的桶排序，并不是真正的桶排序算法，真正的桶排序算法要比这个更加复杂。</p>

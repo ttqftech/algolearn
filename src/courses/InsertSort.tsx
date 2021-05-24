@@ -1,4 +1,4 @@
-import { BasicType, ProgramNode, Variable } from "../types/types";
+import { BasicType, Variable } from "../types/types";
 import { BaseCourse, BaseCourseProps } from "./BaseCourse";
 import './BaseCourse.scss';
 import './InsertSort.scss';
@@ -8,48 +8,56 @@ void main() {
     int ball[7];
     int box[7];
     int i; int j; int pos;
+    int z; // 用 于 输 出 
+    int breakJFlag;
     int value;
     ball[0] = 52; ball[1] = 79; ball[2] = 24; ball[3] = 7; ball[4] = 13; ball[5] = 97; ball[6] = 47;
 
     // 1. 排 序
-    i = 0;
+    i = 0; j = 0;
     while (i <= 6)
     {
-        // 一 层 循 环 ： 拿 起  ball[i]
+        // 一 层 循 环 ： 拿 起  ball[i]（ i 代 表 拿 起 序 号 为  i 的 球 ） 
         value = ball[i];
-        while (j <= 6)
+        // j 代 表 要 插 入 的 位 置 
+        j = 0;
+        breakJFlag = 0;
+        while (j < i && breakJFlag == 0)
         {
             // 二 层 循 环 ： 与 盒 中 的 所 有 球 逐 一 比 较 ， 直 到 发 现 比 自 己 大 的 或 者 比 较 到 末 尾
-            if (box[j] <= value || j > i)
+            if (box[j] >= value || j > i)
             {
-                // 将 后 面 的 所 有 球 都 后 移 一 位 ， 腾 出 空 间 
-                pos = j;
-                while (j <= i)
+                // 将 后 面 的 所 有 球 都 后 移 一 位 ， 腾 出 空 间    
+                // pos 代 表 从 后 往 前 腾 出 空 间 的 指 针 
+                pos = i;
+                while (pos >= j)
                 {
-                    box[j + 1] = box[j];
-                    j = j + 1;
+                    box[pos] = box[pos - 1];
+                    pos = pos - 1;
                 }
                 box[j] = value;
+                breakJFlag = 1;
             }
             j = j + 1;
         }
-        box[value] = value;
+        if (breakJFlag == 0)
+        {
+            box[j] = value;
+        }
         i = i + 1;
     }
 
     // 2. 输 出
-    i = 0;
-    while (i <= 6)
+    z = 0;
+    while (z <= 6)
     {
-        if (box[i] != -1)
-        {
-            print(box[i]);
-        }
-        i = i + 1;
+        print2Buffer(box[z]);
+        z = z + 1;
     }
+    alert();
 }
 `
-
+/*
 const testProgramNode: ProgramNode = {
 	functionList: [
 		{
@@ -96,6 +104,7 @@ const testProgramNode: ProgramNode = {
 	variableList: [],
 	syntaxNode: null as any,
 }
+*/
 
 interface State {}
 
@@ -108,32 +117,42 @@ class InsertSort extends BaseCourse<BaseCourseProps, State> {
 		return baseCode;
 	}
 	render () {
-		let mainFunc = testProgramNode.functionList.find((functionList) => functionList.name === 'main');
-		let box, boxTypeIsValid = false;
-		let ball, ballTypeIsValid = false;
-		let i: Variable | undefined, iTypeIsValid = false;
-		let j: Variable | undefined, jTypeIsValid = false;
-		if (mainFunc) {
-			box = mainFunc.variableList.find((variableList) => variableList.name === 'box');
-			if (box?.type.basic === BasicType.integer && box.type.length?.length === 1) {
-				boxTypeIsValid = true;
-			}
-			ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
-			if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
-				ballTypeIsValid = true;
-			}
-			i = mainFunc.variableList.find((variableList) => variableList.name === 'i');
-			if (i?.type.basic === BasicType.integer && !i.type.length) {
-				iTypeIsValid = true;
-			}
-			j = mainFunc.variableList.find((variableList) => variableList.name === 'j');
-			if (j?.type.basic === BasicType.integer && !j.type.length) {
-				jTypeIsValid = true;
-			}
-		}
 		let display1: React.CElement<{}, React.Component<{}, any, any>>;
 		// ProgramNode 检查
-		if (testProgramNode) {
+		if (this.props.programNode) {
+			let mainFunc = this.props.programNode.functionList.find((functionList) => functionList.name === 'main');
+			let box, boxTypeIsValid = false;
+			let ball, ballTypeIsValid = false;
+			let i: Variable | undefined, iTypeIsValid = false;
+			let j: Variable | undefined, jTypeIsValid = false;
+			let z: Variable | undefined, zTypeIsValid = false;
+			let value: Variable | undefined, valueTypeIsValid = false;
+			if (mainFunc) {
+				box = mainFunc.variableList.find((variableList) => variableList.name === 'box');
+				if (box?.type.basic === BasicType.integer && box.type.length?.length === 1) {
+					boxTypeIsValid = true;
+				}
+				ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
+				if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
+					ballTypeIsValid = true;
+				}
+				i = mainFunc.variableList.find((variableList) => variableList.name === 'i');
+				if (i?.type.basic === BasicType.integer && !i.type.length) {
+					iTypeIsValid = true;
+				}
+				j = mainFunc.variableList.find((variableList) => variableList.name === 'j');
+				if (j?.type.basic === BasicType.integer && !j.type.length) {
+					jTypeIsValid = true;
+				}
+				z = mainFunc.variableList.find((variableList) => variableList.name === 'z');
+				if (z?.type.basic === BasicType.integer && !z.type.length) {
+					zTypeIsValid = true;
+				}
+				value = mainFunc.variableList.find((variableList) => variableList.name === 'value');
+				if (value?.type.basic === BasicType.integer && !value.type.length) {
+					valueTypeIsValid = true;
+				}
+			}
 			// main 函数检查
 			if (mainFunc) {
 				// 变量是否存在检查
@@ -146,16 +165,19 @@ class InsertSort extends BaseCourse<BaseCourseProps, State> {
 					} else {
 						let boxArr = box.value as Array<number>;
 						let ballArr = ball.value as Array<number>;
+						let textDiv;
+						if (zTypeIsValid && z?.value !== undefined) {
+							textDiv = <span>正在输出：序号 {z.value}</span>
+						} else if (iTypeIsValid && jTypeIsValid) {
+							textDiv = <span>第 {i?.value + 1} 次循环，把数字为 {ballArr[i?.value]} 的球与盒子里 {j?.value} 号位置比较</span>;
+						} else {
+							textDiv = <span>i 用作取第 i 个球，j 用作确定插入位置，z 用作输出序号，请在代码编辑器修正变量名</span>
+						}
 						display1 = (
 							<>
-								{iTypeIsValid && jTypeIsValid ? (
-									<span>第 {i?.value} 次循环，把数字为 {ballArr[i?.value]} 的球与盒子里 {j?.value} 号位置比较</span>
-								) : (
-									<span>图形演示区</span>
-								)}
+								{textDiv}
 								{boxArr.map((number, index) => {
 									let appendColor;
-									console.log('valid?');
 									if (jTypeIsValid && j?.value === index) {
 										appendColor = {
 											border: 'hsla(15deg, 100%, 50%, 0.3) 1.5px dashed',
@@ -168,15 +190,20 @@ class InsertSort extends BaseCourse<BaseCourseProps, State> {
 								})}
 								{ballArr.map((number, index) => {
 									let posInBox = boxArr.findIndex((value) => value === number);
-									let position;
+									let position, flash;
 									if (posInBox >= 0) {
 										position = {
 											left: `${posInBox * 48 + 24}px`,
 											top: '128px',
 										};
 									}
+									if (valueTypeIsValid && value?.value === number) {
+										flash = {
+											animation: 'flashing1-2-1 0.5s ease-in 0s infinite alternate'
+										}
+									}
 									return (
-										<div className="ball" style={{ backgroundColor: `hsla(${number * 3.6}deg, 70%, 50%)`, left: `${index * 48 + 24}px`, ...position }}>{number}</div>
+										<div className="ball" style={{ backgroundColor: `hsla(${number * 3.6}deg, 70%, 50%)`, left: `${index * 48 + 24}px`, ...position, ...flash }}>{number}</div>
 									);
 								})}
 							</>

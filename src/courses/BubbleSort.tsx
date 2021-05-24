@@ -1,4 +1,4 @@
-import { ProgramNode, BasicType, Variable } from "../types/types";
+import { BasicType, Variable } from "../types/types";
 import { BaseCourse, BaseCourseProps } from "./BaseCourse";
 import './BaseCourse.scss';
 import './BubbleSort.scss';
@@ -6,13 +6,14 @@ import './BubbleSort.scss';
 const baseCode = `\
 void main() {
     int ball[7];
-    int i;
-    int value;
+    int i; int j;
+    int z; // 用 于 输 出 
+    int temp;
     ball[0] = 6; ball[1] = 4; ball[2] = 3; ball[3] = 5; ball[4] = 7; ball[5] = 1; ball[6] = 2;
 
     // 1. 排 序
     i = 1;
-    while (i <= 5)
+    while (i <= 6)
     {
         // i 指 示 冒 泡 的 终 点
         // 因 为 冒 泡 机 制 使 得 最 小 的 元 素 会 一 路 连 续 冒 到 最 左 边
@@ -21,11 +22,11 @@ void main() {
         while (j >= i)
         {
             // 如 果 右 边 的 球 比 左 边 更 小 ， 那 么 交 换
-            if (ball[i] > ball[i - 1])
+            if (ball[j] < ball[j - 1])
             {
-                temp = ball[i];
-                ball[i] = ball[i - 1];
-                ball[i - 1] = temp;
+                temp = ball[j];
+                ball[j] = ball[j - 1];
+                ball[j - 1] = temp;
             }
             // 要 让 更 小 的 元 素 往 左 冒 ， 就 要 让 冒 泡 从 右 出 发 向 左 进 行
             j = j - 1;
@@ -34,18 +35,19 @@ void main() {
     }
 
     // 2. 输 出
-    i = 0;
-    while (i <= 6)
+    z = 0;
+    while (z <= 6)
     {
-        if (bucket[i] != -1)
+        if (ball[z] != -1)
         {
-            print(bucket[i]);
+            print2Buffer(ball[z]);
         }
-        i = i + 1;
+        z = z + 1;
     }
+    alert();
 }
 `
-
+/*
 const testProgramNode: ProgramNode = {
 	functionList: [
 		{
@@ -91,6 +93,7 @@ const testProgramNode: ProgramNode = {
 	variableList: [],
 	syntaxNode: null as any,
 }
+*/
 
 interface State {
 	initialBall: Array<number>;
@@ -107,32 +110,37 @@ class BubbleSort extends BaseCourse<BaseCourseProps, State> {
 		return baseCode;
 	}
 	render () {
-		let mainFunc = testProgramNode.functionList.find((functionList) => functionList.name === 'main');
-		let ball, ballTypeIsValid = false;
-		let i: Variable | undefined, iTypeIsValid = false;
-		let j: Variable | undefined, jTypeIsValid = false;
-		let temp: Variable | undefined, tempTypeIsValid = false;
-		if (mainFunc) {
-			ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
-			if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
-				ballTypeIsValid = true;
-			}
-			i = mainFunc.variableList.find((variableList) => variableList.name === 'i');
-			if (i?.type.basic === BasicType.integer && !i.type.length) {
-				iTypeIsValid = true;
-			}
-			j = mainFunc.variableList.find((variableList) => variableList.name === 'j');
-			if (j?.type.basic === BasicType.integer && !j.type.length) {
-				jTypeIsValid = true;
-			}
-			temp = mainFunc.variableList.find((variableList) => variableList.name === 'temp');
-			if (temp?.type.basic === BasicType.integer && !temp.type.length) {
-				tempTypeIsValid = true;
-			}
-		}
 		let display1: React.CElement<{}, React.Component<{}, any, any>>;
 		// ProgramNode 检查
-		if (testProgramNode) {
+		if (this.props.programNode) {
+			let mainFunc = this.props.programNode.functionList.find((functionList) => functionList.name === 'main');
+			let ball, ballTypeIsValid = false;
+			let i: Variable | undefined, iTypeIsValid = false;
+			let j: Variable | undefined, jTypeIsValid = false;
+			let z: Variable | undefined, zTypeIsValid = false;
+			let temp: Variable | undefined, tempTypeIsValid = false;
+			if (mainFunc) {
+				ball = mainFunc.variableList.find((variableList) => variableList.name === 'ball');
+				if (ball?.type.basic === BasicType.integer && ball.type.length?.length === 1) {
+					ballTypeIsValid = true;
+				}
+				i = mainFunc.variableList.find((variableList) => variableList.name === 'i');
+				if (i?.type.basic === BasicType.integer && !i.type.length) {
+					iTypeIsValid = true;
+				}
+				j = mainFunc.variableList.find((variableList) => variableList.name === 'j');
+				if (j?.type.basic === BasicType.integer && !j.type.length) {
+					jTypeIsValid = true;
+				}
+				z = mainFunc.variableList.find((variableList) => variableList.name === 'z');
+				if (z?.type.basic === BasicType.integer && !z.type.length) {
+					zTypeIsValid = true;
+				}
+				temp = mainFunc.variableList.find((variableList) => variableList.name === 'temp');
+				if (temp?.type.basic === BasicType.integer && !temp.type.length) {
+					tempTypeIsValid = true;
+				}
+			}
 			// main 函数检查
 			if (mainFunc) {
 				// 变量是否存在检查
@@ -144,14 +152,18 @@ class BubbleSort extends BaseCourse<BaseCourseProps, State> {
 						display1 = <p>变量 temp 的类型不对，应是 int，请修改</p>;
 					} else {
 						let ballArr = ball.value as Array<number>;
-						console.log('hell?');
+						let textDiv;
+						if (zTypeIsValid && z?.value !== undefined) {
+							textDiv = <span>正在输出：序号 {z.value}</span>
+						} else if (iTypeIsValid && jTypeIsValid) {
+							textDiv = <span>第 {i?.value} 次循环，把序号为 {j?.value} 的方块与序号为 {j?.value - 1} 的方块比较，直到序号 {i?.value} 结束</span>;
+						} else {
+							textDiv = <span>i 指示冒泡的终点，z 用作输出序号，请在代码编辑器修正变量名</span>
+						}
+						console.log('dis');
 						display1 = (
 							<>
-								{iTypeIsValid && jTypeIsValid ? (
-									<span>第 {i?.value + 1} 次循环，把序号为 {j?.value} 的方块与序号为 {j?.value - 1} 的方块比较，直到序号 {i?.value} 结束</span>
-								) : (
-									<span>图形演示区</span>
-								)}
+								{textDiv}
 								{temp.value && (
 									<>
 										<div className="ball" style={{ top: '20px', left: '24px', backgroundColor: `hsla(${temp.value * 30}deg, 70%, 50%)` }}>{temp.value}</div>
@@ -168,8 +180,9 @@ class BubbleSort extends BaseCourse<BaseCourseProps, State> {
 										return null;
 									}
 								})}
-								<div className="pointer" style={{ left: `${j?.value * 48 + 24 + 10}px` }}></div>
-								<div className="pointer" style={{ left: `${j?.value * 48 - 24 + 10}px` }}></div>
+								{j?.value ? <div className="pointerJ" style={{ left: `${j?.value * 48 + 24 + 10}px` }}></div> : null}
+								{j?.value ? <div className="pointerJ" style={{ left: `${j?.value * 48 - 24 + 10}px` }}></div> : null}
+								{i?.value ? <div className="pointerI" style={{ left: `${i?.value * 48 - 24 + 6}px` }}></div> : null}
 							</>
 						)
 					}
