@@ -358,9 +358,9 @@ export class GrammarAnalysis {
 	private programNode?: ProgramNode;
 
 	constructor() {
-		console.log('LR', LR);
-		console.log('hash', hash);
-		console.log('productions', productions);
+		// console.log('LR', LR);
+		// console.log('hash', hash);
+		// console.log('productions', productions);
 		(window as any).grammar = this;
 	}
 

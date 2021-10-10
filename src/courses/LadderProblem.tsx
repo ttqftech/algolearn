@@ -78,6 +78,11 @@ class LadderProblem extends BaseCourse<BaseCourseProps, State> {
 												border: 'hsla(15deg, 100%, 50%, 0.3) 1.5px dashed',
 												backgroundColor: 'hsla(15deg, 100%, 50%, 0.15)',
 											};
+										} else if (i?.value === index + 1 || i?.value === index + 2) {
+											appendColor = {
+												border: 'hsla(210deg, 100%, 50%, 0.3) 1.5px dashed',
+												backgroundColor: 'hsla(210deg, 100%, 50%, 0.15)',
+											};
 										}
 										return <div className="bucket" style={{ ...appendColor }}>{value || '-'}</div>;
 									})}

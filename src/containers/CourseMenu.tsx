@@ -10,6 +10,7 @@ interface Props {
 
 interface State {
 	width: number;
+	dragging: boolean;
 	selectedChapter: number;
 }
 
@@ -18,6 +19,7 @@ class CourseMenu extends React.Component<Props, State> {
 		super(props);
 		this.state = {
 			width: 260,
+			dragging: false,
 			selectedChapter: -1,
 		};
 	}
@@ -45,24 +47,41 @@ class CourseMenu extends React.Component<Props, State> {
 	 * 响应右边栏的 DragStart 操作
 	 */
 	onRightBarDragStart(event: any) {
-		event.preventDefault();	// 阻止触摸时浏览器的缩放、滚动条滚动 
-		let leftBarDragX = (event.nativeEvent as MouseEvent).offsetX;
-		let moveListener = (ev: MouseEvent) => {
+		// event.preventDefault();		// 阻止触摸时浏览器的缩放、滚动条滚动（对于触摸事件，因为 react 默认 passive = true，所以不能用这个）
+		this.setState({
+			dragging: true,
+		});
+		let 这 = this;
+		let leftBarDragX = (event.nativeEvent as MouseEvent).offsetX;	// 按下位置相对当前元素的 X
+		if (leftBarDragX === undefined) {
+			// 因为 touch 事件没有 offsetX/Y 属性，所以使用触摸点在窗口上的位置减去元素在窗口上的位置实现 offsetX
+			let elem = (event.nativeEvent as TouchEvent).target as HTMLDivElement;
+			leftBarDragX = (event.nativeEvent as TouchEvent).touches[0].pageX - elem.getBoundingClientRect().left;
+		}
+		let moveListener = (ev: MouseEvent | TouchEvent) => {
+			let pageX = (ev as MouseEvent).pageX || (ev as TouchEvent).touches[0].pageX;	// 当前位置在窗口内的 X
 			this.setState({
-				width: ev.pageX - leftBarDragX + 16,	
+				width: pageX - leftBarDragX + 16,
 			});
 		};
-		let upListener = (ev: MouseEvent) => {
+		let upListener = (ev: MouseEvent | TouchEvent) => {
+			这.setState({
+				dragging: false,
+			});
 			document.body.removeEventListener('mousemove', moveListener);
 			document.body.removeEventListener('mouseup', upListener);
+			document.body.removeEventListener('touchmove', moveListener);
+			document.body.removeEventListener('touchend', upListener);
 		}
 		document.body.addEventListener('mousemove', moveListener);
 		document.body.addEventListener('mouseup', upListener);
+		document.body.addEventListener('touchmove', moveListener);
+		document.body.addEventListener('touchend', upListener);
 	}
 
 	render() {
 		return (
-			<div className="course-menu" style={{ width: this.props.courseIndex ? `${this.state.width}px` : `100%`, boxShadow: this.props.courseIndex ? '0 0 8px hsla(0, 0%, 20%, 0.25)' : 'unset', transition: this.props.courseIndex ? 'width cubic-bezier(0.1, 0.3, 0.2, 1.0) 0.5s' : 'unset' }}>
+			<div className="course-menu" style={{ width: this.props.courseIndex ? `${this.state.width}px` : `100%`, boxShadow: this.props.courseIndex ? '0 0 8px hsla(0, 0%, 20%, 0.25)' : 'unset', transition: this.props.courseIndex && !this.state.dragging ? 'width cubic-bezier(0.1, 0.3, 0.2, 1.0) 0.5s' : 'unset' }}>
 				<div className="welcome" style={{ height: this.props.courseIndex ? '0' : '224px' }}>
 					<div>
 						<h2>欢迎来到 algolearn</h2>
@@ -97,7 +116,7 @@ class CourseMenu extends React.Component<Props, State> {
 					})}
 				</div>
 				{this.props.courseIndex && (
-					<div className="dragger" onMouseDown={this.onRightBarDragStart.bind(this)}>
+					<div className="dragger" onMouseDown={this.onRightBarDragStart.bind(this)} onTouchStart={this.onRightBarDragStart.bind(this)}>
 						<div className="draggerimg"></div>
 					</div>
 				)}

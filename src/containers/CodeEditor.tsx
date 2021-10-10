@@ -326,22 +326,31 @@ class CodeEditor extends React.Component<Props, State> {
 	 * 响应左边栏的 DragStart 操作
 	 */
 	onLeftBarDragStart(event: any) {
-		event.preventDefault();	// 阻止触摸时浏览器的缩放、滚动条滚动 
-		let leftBarDragX = (event.nativeEvent as MouseEvent).offsetX;
-		let moveListener = (ev: MouseEvent) => {
+		// event.preventDefault();		// 阻止触摸时浏览器的缩放、滚动条滚动（对于触摸事件，因为 react 默认 passive = true，所以不能用这个）
+		let leftBarDragX = (event.nativeEvent as MouseEvent).offsetX;	// 按下位置相对当前元素的 X
+		if (leftBarDragX === undefined) {
+			// 因为 touch 事件没有 offsetX/Y 属性，所以使用触摸点在窗口上的位置减去元素在窗口上的位置实现 offsetX
+			let elem = (event.nativeEvent as TouchEvent).target as HTMLDivElement;
+			leftBarDragX = (event.nativeEvent as TouchEvent).touches[0].pageX - elem.getBoundingClientRect().left;
+		}
+		let moveListener = (ev: MouseEvent | TouchEvent) => {
+			let pageX = (ev as MouseEvent).pageX || (ev as TouchEvent).touches[0].pageX;	// 当前位置在窗口内的 X
 			this.setState({
-				width: document.documentElement.clientWidth - ev.pageX + leftBarDragX - 16,
-	
+				width: document.documentElement.clientWidth - pageX + leftBarDragX - 16,
 			});
 			// 代码编辑器宽度适配
 			this.refreshCodeareaSize();
 		};
-		let upListener = (ev: MouseEvent) => {
+		let upListener = (ev: MouseEvent | TouchEvent) => {
 			document.body.removeEventListener('mousemove', moveListener);
 			document.body.removeEventListener('mouseup', upListener);
+			document.body.removeEventListener('touchmove', moveListener);
+			document.body.removeEventListener('touchend', upListener);
 		}
 		document.body.addEventListener('mousemove', moveListener);
 		document.body.addEventListener('mouseup', upListener);
+		document.body.addEventListener('touchmove', moveListener);
+		document.body.addEventListener('touchend', upListener);
 	}
 
 	/**
@@ -397,7 +406,7 @@ class CodeEditor extends React.Component<Props, State> {
 
 	render() {
 		return (
-			<div className="code-editor" style={{ width: `${Math.max(200, this.state.width)}px` }}>
+			<div className="code-editor" style={{ width: `${Math.max(120, this.state.width)}px` }}>
 				<div className="controller">
 					<button onClick={this.onStepClick.bind(this)} onMouseDown={this.onStepDown.bind(this)}>单步</button>
 					<button onClick={this.onResetClick.bind(this)}>重启</button>
@@ -428,7 +437,7 @@ class CodeEditor extends React.Component<Props, State> {
 						</div>
 					) : null}
 				</div>
-				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)}>
+				<div className="dragger" onMouseDown={this.onLeftBarDragStart.bind(this)} onTouchStart={this.onLeftBarDragStart.bind(this)}>
 					<div className="draggerimg"></div>
 				</div>
 			</div>

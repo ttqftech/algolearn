@@ -80,11 +80,19 @@ class App extends React.Component<{}, State> {
 		return (
 			<div className="App">
 				<header className="header">
-					<img src={logo} className="logo" alt="logo" />
-					<h1 className="name">algolearn</h1>
+					<a className="logo-wrapper" href="https://ttqf.tech/" target="_blank" rel="noreferrer">
+						<div className="background"></div>
+						<img src={logo} className="logo" alt="logo" />
+						<h1 className="name">algolearn</h1>
+						<img src="./images/ttqftechlogo.png" className="tottqftech" alt="前往滔滔清风科技馆" />
+					</a>
 					{this.state.courseIndex && (
 						<div className="title">{getCourseByChapterIndex(this.state.courseIndex)!.title}</div>
 					)}
+					<a className="togithub" href="https://github.com/ttqftech/algolearn/" target="_blank" rel="noreferrer">
+						<div className="background"></div>
+						<img src="./images/github.svg" alt="前往项目源码仓库" />
+					</a>
 				</header>
 				<div className="apparea">
 					<CourseMenu
@@ -96,7 +104,6 @@ class App extends React.Component<{}, State> {
 							<div className="playground">
 								{SelectedCourse}
 							</div>
-							{/* <button onClick={this.handleClick.bind(this)}></button> */}
 							<CodeEditor
 								onRef={this.bindCodeEditorRef.bind(this)}
 								onProgramNodeUpdate={this.handleProgramNodeUpdated.bind(this)}
