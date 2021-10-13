@@ -89,10 +89,16 @@ class App extends React.Component<{}, State> {
 					{this.state.courseIndex && (
 						<div className="title">{getCourseByChapterIndex(this.state.courseIndex)!.title}</div>
 					)}
-					<a className="togithub" href="https://github.com/ttqftech/algolearn/" target="_blank" rel="noreferrer">
-						<div className="background"></div>
-						<img src="./images/github.svg" alt="前往项目源码仓库" />
-					</a>
+					<div className="repositories">
+						<a className="iconbutton" href="https://github.com/ttqftech/algolearn/" target="_blank" rel="noreferrer">
+							<div className="background"></div>
+							<img src="./images/github.svg" alt="前往 GitHub 源码仓库" />
+						</a>
+						<a className="iconbutton" href="https://gitee.com/ttqf/algolearn/" target="_blank" rel="noreferrer">
+							<div className="background"></div>
+							<img src="./images/gitee.svg" alt="前往 Gitee 源码仓库" />
+						</a>
+					</div>
 				</header>
 				<div className="apparea">
 					<CourseMenu
