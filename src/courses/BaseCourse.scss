@@ -13,7 +13,7 @@
 			border-bottom: hsla(0, 0, 50%, 0.5) 1px solid;
 			font-size: 1.75em;
 		}
-		p {
+		&>p {
 			line-height: 1.75em;
 			text-indent: 2em;
 		}
@@ -41,6 +41,7 @@
 			max-width: calc(100% - 16px);
 			text-align: center;
 			margin: 1em auto;
+			background-color: #FFFFFF77;
 			box-shadow: 0 6px 12px hsla(0, 0, 50%, 0.1);
 			border: hsla(0, 0, 50%, 0.2) 3px dashed;
 			overflow: auto;

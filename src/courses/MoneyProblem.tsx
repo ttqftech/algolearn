@@ -187,7 +187,7 @@ class MoneyProblem extends BaseCourse<BaseCourseProps, State> {
 		return (
 			<div className="article-wrapper">
 				<article>
-					<h2>2.1 贪心算法——贪啥？贪钱！</h2>
+					<h2>3.1 贪心算法——贪啥？贪钱！</h2>
 					<p>这章我们来介绍“贪心算法”。</p>
 					<p>这个算法的道理很直白，它就是——有好多好东西摆在你面前，让你尽快拿走，你当然首先会选择最好的那一个。</p>
 					<p>比如说，你钱包不小心洒了，洒出来的人民币各种面值都有，为了避免被风刮走，你肯定优先捡面值最大的 100 块~</p>

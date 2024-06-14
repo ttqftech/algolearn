@@ -1,0 +1,150 @@
+.display-MinMax1 {
+	height: 320px;
+	.description {
+		position: absolute;
+		left: 16px;
+		right: 16px;
+		top: 16px;
+		font-size: 1em;
+		p {
+
+			margin: 0 0 8px;
+		}
+	}
+	.towers {
+		position: absolute;
+		top: 120px;
+		left: 15%;
+		right: 15%;
+		display: flex;
+		justify-content: space-between;
+		div {
+			width: 0;
+			display: flex;
+			justify-content: center;
+			@keyframes flashing-MinMax {
+				from {
+					background-color: #FFFFFF;
+					opacity: 1;
+					box-shadow: 0 2px 4px hsla(0, 0, 100%, 0.7) inset,
+								0 0 12px 6px hsla(0, 0, 50%, 0.3);
+				}
+				to {
+					background-color: #FFFFFF00;
+					opacity: 0.5;
+				}
+			}		
+			div {
+				position: relative;
+				width: 80px;
+				min-width: 80px;
+				height: 100px;
+				border-radius: 8px;
+				img {
+					position: absolute;
+					top: 0;
+					width: 80px;
+					height: 80px;
+					object-fit: contain;
+				}
+				span {
+					position: absolute;
+					top: 80px;
+					left: 0;
+					width: 100%;
+					font-size: 0.8em;
+					text-align: center;
+				}
+			}
+		}
+	}
+	.hline {
+		position: absolute;
+		top: 256px;
+		left: 5%;
+		right: 5%;
+		height: 1px;
+		background: linear-gradient(to right, #11447733, #114477, #11447733);
+	}
+	.scale {
+		position: absolute;
+		top: 248px;
+		left: 15%;
+		right: 15%;
+		display: flex;
+		justify-content: space-between;
+		div {
+			width: 1px;
+			height: 16px;
+			background: linear-gradient(to bottom, #77777700, #777777, #77777700);
+		}
+	}
+	.scaleNumber {
+		position: absolute;
+		top: 272px;
+		left: 15%;
+		right: 15%;
+		display: flex;
+		justify-content: space-between;
+		div {
+			width: 0;
+			display: flex;
+			justify-content: center;
+			font-size: 0.5em;
+			color: #77777777;
+		}
+	}
+	.min, .max {
+		position: absolute;
+		top: 234px;
+		width: 0;
+		display: flex;
+		justify-content: center;
+		opacity: 0.8;
+		transition: left 1.5s cubic-bezier(0.3, 0.5, 0.3, 1);
+		div {
+			width: 60px;
+			min-width: 60px;
+			height: 40px;
+			border-radius: 10px;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			color: white;
+			text-shadow: 0.5px 1px 1px #00000077;
+			// https://blog.csdn.net/weixin_46261399/article/details/136593904 很好看的发光球体，用不上
+			// box-shadow: inset 0 0 10px #ffffff33, // 内白光
+			// 			inset 2px 0 16px #3355DD77, // 左描边
+			// 			inset -2px 0 16px #2244CC77, // 右描边
+			// 			inset 2px 0 60px #3355DD77, // 左半球
+			// 			inset -2px 0 60px #2244CC77, // 右半球
+			// 			0 0 10px #00000033, // 外白光
+			// 			2px 0 16px #3355DD00, // 左发光
+			// 			-2px 0 16px #2244CC00, // 右发光
+			// 			;
+			box-shadow: 0 2px 4px hsla(0, 0, 100%, 0.7) inset,
+						0 -2px 3px hsla(0, 0, 0%, 0.3) inset;
+			font-size: 0.8em;
+		}
+	}
+	.min>div {
+		background-color: #3355DD;
+	}
+	.max>div {
+		background-color: #33BB55;
+	}
+	.indexIndicator {
+		position: absolute;
+		top: 120px;
+		width: 0;
+		display: flex;
+		justify-content: center;
+		div {
+			width: 100px;
+			min-width: 100px;
+			height: 100px;
+			border-radius: 50%;
+			box-shadow: inset 0 0 16px #33BB55, 0 0 4px #33BB55;
+		}
+	}
+}

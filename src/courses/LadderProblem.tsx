@@ -104,7 +104,7 @@ class LadderProblem extends BaseCourse<BaseCourseProps, State> {
 		return (
 			<div className="article-wrapper">
 				<article>
-					<h2>3.1 动态规划——迈 2 阶还是 1 阶？上阶梯问题</h2>
+					<h2>4.1 动态规划——迈 2 阶还是 1 阶？上阶梯问题</h2>
 					<p>这章我们来介绍“动态规划算法”。</p>
 					<p>“动态规划”这个名字可能一开始有点不太好理解。我给您换个说法：“缓存算法”。</p>
 					<p>怎么理解它呢？我们可以认为，<span style={{ color: '#BB0000' }}>使用动态规划的算法，后面的解取决于前面的解。也就是说，只要给出前面的解，后面的解可以由前面的解<strong>递推</strong>出来。</span></p>

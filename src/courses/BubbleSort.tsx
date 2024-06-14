@@ -199,7 +199,7 @@ class BubbleSort extends BaseCourse<BaseCourseProps, State> {
 		return (
 			<div className="article-wrapper">
 				<article>
-					<h2>1.3 消消乐排序？冒泡排序！</h2>
+					<h2>2.3 消消乐排序？冒泡排序！</h2>
 					<p>接下来介绍一种不需要额外空间的排序方法——冒泡排序！</p>
 					<p>如果大家有玩过“消消乐”的游戏的话，对这种排序方式应该就会倍感亲切。</p>
 					<img src="./BubbleSort/消消乐_裁剪.webp" alt="消消乐游戏" />
